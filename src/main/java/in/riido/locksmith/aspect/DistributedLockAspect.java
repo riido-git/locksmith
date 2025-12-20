@@ -6,7 +6,9 @@ import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LockNotAcquiredException;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import org.springframework.boot.convert.DurationStyle;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -83,22 +85,14 @@ public class DistributedLockAspect {
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = redissonClient.getLock(lockKey);
 
-    final long leaseTimeMinutes =
-        distributedLock.leaseTimeMinutes() > 0
-            ? distributedLock.leaseTimeMinutes()
-            : lockProperties.leaseTimeMinutes();
-
-    final long waitTimeSeconds =
-        distributedLock.waitTimeSeconds() >= 0
-            ? distributedLock.waitTimeSeconds()
-            : lockProperties.waitTimeSeconds();
+    final Duration leaseTime = parseDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
+    final Duration waitTime = parseDuration(distributedLock.waitTime(), lockProperties.waitTime());
 
     final String methodName = getMethodName(joinPoint);
     boolean lockAcquired = false;
 
     try {
-      lockAcquired =
-          tryAcquireLock(lock, distributedLock.mode(), waitTimeSeconds, leaseTimeMinutes);
+      lockAcquired = tryAcquireLock(lock, distributedLock.mode(), waitTime, leaseTime);
 
       if (!lockAcquired) {
         LOG.info(
@@ -138,9 +132,10 @@ public class DistributedLockAspect {
   }
 
   private boolean tryAcquireLock(
-      RLock lock, LockAcquisitionMode mode, long waitTimeSeconds, long leaseTimeMinutes)
+      RLock lock, LockAcquisitionMode mode, Duration waitTime, Duration leaseTime)
       throws InterruptedException {
-    final long leaseTimeSeconds = TimeUnit.MINUTES.toSeconds(leaseTimeMinutes);
+    final long leaseTimeSeconds = leaseTime.toSeconds();
+    final long waitTimeSeconds = waitTime.toSeconds();
     return switch (mode) {
       case SKIP_IMMEDIATELY -> lock.tryLock(0, leaseTimeSeconds, TimeUnit.SECONDS);
       case WAIT_AND_SKIP -> lock.tryLock(waitTimeSeconds, leaseTimeSeconds, TimeUnit.SECONDS);
@@ -175,6 +170,20 @@ public class DistributedLockAspect {
     if (returnType == short.class) return (short) 0;
     if (returnType == char.class) return '\u0000';
     return null;
+  }
+
+  /**
+   * Parses a duration string into a Duration object.
+   *
+   * @param durationString the duration string (e.g., "10m", "30s", "PT10M")
+   * @param defaultValue the default value to use if the string is empty
+   * @return the parsed Duration, or the default value if the string is empty
+   */
+  private Duration parseDuration(String durationString, Duration defaultValue) {
+    if (durationString == null || durationString.isBlank()) {
+      return defaultValue;
+    }
+    return DurationStyle.detectAndParse(durationString);
   }
 
   /**

@@ -70,20 +70,34 @@ public @interface DistributedLock {
     LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
 
     /**
-     * Override the default lease time in minutes. The lock will be automatically released after this
-     * duration. Use -1 to use the default from configuration.
+     * Override the default lease time. The lock will be automatically released after this duration.
+     * Use an empty string to use the default from configuration.
      *
-     * @return lease time in minutes, -1 for default
+     * <p>Accepts duration strings in the following formats:
+     *
+     * <ul>
+     *   <li>Simple format: "10m" (10 minutes), "30s" (30 seconds), "1h" (1 hour)
+     *   <li>ISO-8601 format: "PT10M" (10 minutes), "PT30S" (30 seconds)
+     * </ul>
+     *
+     * @return lease time duration string, empty for default
      */
-    long leaseTimeMinutes() default -1;
+    String leaseTime() default "";
 
     /**
-     * Override the default wait time in seconds for WAIT_AND_SKIP mode. Use -1 to use the default
+     * Override the default wait time for WAIT_AND_SKIP mode. Use an empty string to use the default
      * from configuration.
      *
-     * @return wait time in seconds, -1 for default
+     * <p>Accepts duration strings in the following formats:
+     *
+     * <ul>
+     *   <li>Simple format: "10s" (10 seconds), "5m" (5 minutes), "1h" (1 hour)
+     *   <li>ISO-8601 format: "PT10S" (10 seconds), "PT5M" (5 minutes)
+     * </ul>
+     *
+     * @return wait time duration string, empty for default
      */
-    long waitTimeSeconds() default -1;
+    String waitTime() default "";
 
     /**
      * Defines the behavior when the lock cannot be acquired and method execution is skipped.

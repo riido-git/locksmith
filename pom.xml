@@ -6,7 +6,7 @@
 
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>jar</packaging>
 
     <name>Locksmith Spring Boot Starter</name>
@@ -23,7 +23,7 @@
 
     <developers>
         <developer>
-            <id>garvitjoshi</id>
+            <id>garvit-joshi</id>
             <name>Garvit Joshi</name>
             <email>garvitjoshi9@gmail.com</email>
             <organization>Riido</organization>

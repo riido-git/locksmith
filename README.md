@@ -29,7 +29,7 @@ Add the dependency to your `pom.xml`:
 </dependency>
 ```
 
-You must also include Redisson and Spring AOP in your project:
+You must also include Redisson and AspectJ in your project:
 
 ```xml
 <dependency>
@@ -39,8 +39,8 @@ You must also include Redisson and Spring AOP in your project:
 </dependency>
 
 <dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-aop</artifactId>
+    <groupId>org.aspectj</groupId>
+    <artifactId>aspectjweaver</artifactId>
 </dependency>
 ```
 
@@ -70,9 +70,9 @@ Configure locksmith in your `application.properties` or `application.yml`:
 
 ```yaml
 locksmith:
-  lease-time-minutes: 10    # Lock auto-release time (default: 10)
-  wait-time-seconds: 60     # Wait time for WAIT_AND_SKIP mode (default: 60)
-  key-prefix: "lock:"       # Redis key prefix (default: "lock:")
+  lease-time: 10m       # Lock auto-release time (default: 10m)
+  wait-time: 60s        # Wait time for WAIT_AND_SKIP mode (default: 60s)
+  key-prefix: "lock:"   # Redis key prefix (default: "lock:")
 ```
 
 ## Usage
@@ -154,8 +154,8 @@ public void longRunningTask() { }
 |-----------|------|---------|-------------|
 | `key` | String | (required) | Lock key, supports SpEL |
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
-| `leaseTimeMinutes` | long | -1 (use config) | Lock auto-release time |
-| `waitTimeSeconds` | long | -1 (use config) | Wait time for WAIT_AND_SKIP |
+| `leaseTimeMinutes` | long | -1 (use config) | Lock auto-release time in minutes |
+| `waitTimeSeconds` | long | -1 (use config) | Wait time in seconds for WAIT_AND_SKIP |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
 
 ### `LockAcquisitionMode`
