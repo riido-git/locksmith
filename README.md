@@ -132,7 +132,7 @@ Use `WAIT_AND_SKIP` mode to wait for the lock before giving up:
 @DistributedLock(
     key = "resource-lock",
     mode = LockAcquisitionMode.WAIT_AND_SKIP,
-    waitTimeSeconds = 30
+    waitTime = "30s"
 )
 public void accessResource() { }
 ```
@@ -142,7 +142,7 @@ public void accessResource() { }
 Override the default lease time per method:
 
 ```java
-@DistributedLock(key = "long-task", leaseTimeMinutes = 30)
+@DistributedLock(key = "long-task", leaseTime = "30m")
 public void longRunningTask() { }
 ```
 
@@ -154,8 +154,8 @@ public void longRunningTask() { }
 |-----------|------|---------|-------------|
 | `key` | String | (required) | Lock key, supports SpEL |
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
-| `leaseTimeMinutes` | long | -1 (use config) | Lock auto-release time in minutes |
-| `waitTimeSeconds` | long | -1 (use config) | Wait time in seconds for WAIT_AND_SKIP |
+| `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
+| `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
 
 ### `LockAcquisitionMode`
@@ -163,7 +163,7 @@ public void longRunningTask() { }
 | Value | Description |
 |-------|-------------|
 | `SKIP_IMMEDIATELY` | Fail immediately if lock is held |
-| `WAIT_AND_SKIP` | Wait up to `waitTimeSeconds` before failing |
+| `WAIT_AND_SKIP` | Wait up to `waitTime` before failing |
 
 ### `SkipBehavior`
 
