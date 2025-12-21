@@ -11,6 +11,9 @@ import in.riido.locksmith.exception.LockNotAcquiredException;
  */
 public class ThrowExceptionHandler implements LockSkipHandler {
 
+  /** Default constructor. */
+  public ThrowExceptionHandler() {}
+
   @Override
   public Object handle(LockContext context) {
     throw new LockNotAcquiredException(context.lockKey(), context.methodName());

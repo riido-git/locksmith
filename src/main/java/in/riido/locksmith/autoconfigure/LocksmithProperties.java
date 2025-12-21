@@ -34,7 +34,13 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
   /** Default key prefix. */
   public static final String DEFAULT_KEY_PREFIX = "lock:";
 
-  /** Compact constructor that applies default values for null or invalid inputs. */
+  /**
+   * Compact constructor that applies default values for null or invalid inputs.
+   *
+   * @param leaseTime the lease time, or null to use default
+   * @param waitTime the wait time, or null to use default
+   * @param keyPrefix the key prefix, or null to use default
+   */
   public LocksmithProperties {
     if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
       leaseTime = DEFAULT_LEASE_TIME;

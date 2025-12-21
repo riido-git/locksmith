@@ -15,6 +15,9 @@ package in.riido.locksmith.handler;
  */
 public class ReturnDefaultHandler implements LockSkipHandler {
 
+  /** Default constructor. */
+  public ReturnDefaultHandler() {}
+
   @Override
   public Object handle(LockContext context) {
     Class<?> returnType = context.returnType();

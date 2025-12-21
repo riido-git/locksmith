@@ -14,9 +14,16 @@ public class LeaseExpiredException extends RuntimeException {
 
   @java.io.Serial private static final long serialVersionUID = 1L;
 
+  /** The Redis key of the lock that expired. */
   private final String lockKey;
+
+  /** The name of the method that exceeded lease time. */
   private final String methodName;
+
+  /** The configured lease time in milliseconds. */
   private final long leaseTimeMs;
+
+  /** The actual execution time in milliseconds. */
   private final long executionTimeMs;
 
   /**
