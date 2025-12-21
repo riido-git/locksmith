@@ -6,10 +6,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.DistributedLock;
+import in.riido.locksmith.LeaseExpirationBehavior;
 import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.exception.LockNotAcquiredException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -54,7 +56,8 @@ class DistributedLockAspectTest {
       String leaseTime,
       String waitTime,
       SkipBehavior onSkip) {
-    setupAnnotation(key, mode, leaseTime, waitTime, onSkip, LockType.REENTRANT);
+    setupAnnotation(
+        key, mode, leaseTime, waitTime, onSkip, LockType.REENTRANT, LeaseExpirationBehavior.IGNORE);
   }
 
   private void setupAnnotation(
@@ -64,6 +67,18 @@ class DistributedLockAspectTest {
       String waitTime,
       SkipBehavior onSkip,
       LockType lockType) {
+    setupAnnotation(
+        key, mode, leaseTime, waitTime, onSkip, lockType, LeaseExpirationBehavior.IGNORE);
+  }
+
+  private void setupAnnotation(
+      String key,
+      LockAcquisitionMode mode,
+      String leaseTime,
+      String waitTime,
+      SkipBehavior onSkip,
+      LockType lockType,
+      LeaseExpirationBehavior onLeaseExpired) {
     DistributedLock annotation = mock(DistributedLock.class);
     when(annotation.key()).thenReturn(key);
     when(annotation.mode()).thenReturn(mode);
@@ -71,6 +86,7 @@ class DistributedLockAspectTest {
     when(annotation.waitTime()).thenReturn(waitTime);
     when(annotation.onSkip()).thenReturn(onSkip);
     when(annotation.type()).thenReturn(lockType);
+    when(annotation.onLeaseExpired()).thenReturn(onLeaseExpired);
 
     Method mockMethod = mock(Method.class);
     when(methodSignature.getMethod()).thenReturn(mockMethod);
@@ -1394,6 +1410,158 @@ class DistributedLockAspectTest {
       assertThrows(RuntimeException.class, () -> aspect.handleDistributedLock(joinPoint));
 
       verify(readLock).unlock();
+    }
+  }
+
+  @Nested
+  @DisplayName("Lease Expiration Detection Tests")
+  class LeaseExpirationTests {
+
+    @Test
+    @DisplayName("Should not trigger lease expiration when execution is within lease time")
+    void shouldNotTriggerLeaseExpirationWhenWithinLeaseTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "10m",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+    }
+
+    @Test
+    @DisplayName(
+        "Should throw LeaseExpiredException when execution exceeds lease time with THROW_EXCEPTION")
+    void shouldThrowLeaseExpiredExceptionWhenExecutionExceedsLeaseTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "1ms",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed())
+          .thenAnswer(
+              invocation -> {
+                Thread.sleep(10);
+                return "result";
+              });
+
+      LeaseExpiredException exception =
+          assertThrows(LeaseExpiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertEquals("lock:test-lock", exception.getLockKey());
+      assertEquals("TestClass.testMethod", exception.getMethodName());
+      assertEquals(1, exception.getLeaseTimeMs());
+      assertTrue(exception.getExecutionTimeMs() >= 1);
+    }
+
+    @Test
+    @DisplayName("Should ignore lease expiration with IGNORE behavior")
+    void shouldIgnoreLeaseExpirationWithIgnoreBehavior() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "1ms",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed())
+          .thenAnswer(
+              invocation -> {
+                Thread.sleep(10);
+                return "result";
+              });
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+    }
+
+    @Test
+    @DisplayName("Should log warning when execution exceeds lease time with LOG_WARNING")
+    void shouldLogWarningWhenExecutionExceedsLeaseTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "1ms",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.LOG_WARNING);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed())
+          .thenAnswer(
+              invocation -> {
+                Thread.sleep(10);
+                return "result";
+              });
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      // Log warning is called but we can't easily verify it without a log appender
+    }
+
+    @Test
+    @DisplayName("Should still release lock after lease expiration exception")
+    void shouldStillReleaseLockAfterLeaseExpirationException() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "1ms",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed())
+          .thenAnswer(
+              invocation -> {
+                Thread.sleep(10);
+                return "result";
+              });
+
+      assertThrows(LeaseExpiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      verify(lock).unlock();
+    }
+
+    @Test
+    @DisplayName("LeaseExpiredException should contain correct information")
+    void leaseExpiredExceptionShouldContainCorrectInformation() {
+      LeaseExpiredException exception =
+          new LeaseExpiredException("test-key", "TestClass.testMethod", 1000, 2000);
+
+      assertEquals("test-key", exception.getLockKey());
+      assertEquals("TestClass.testMethod", exception.getMethodName());
+      assertEquals(1000, exception.getLeaseTimeMs());
+      assertEquals(2000, exception.getExecutionTimeMs());
+      assertTrue(exception.getMessage().contains("test-key"));
+      assertTrue(exception.getMessage().contains("TestClass.testMethod"));
+      assertTrue(exception.getMessage().contains("1000"));
+      assertTrue(exception.getMessage().contains("2000"));
     }
   }
 }

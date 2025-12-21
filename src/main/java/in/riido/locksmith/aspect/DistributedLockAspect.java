@@ -1,10 +1,12 @@
 package in.riido.locksmith.aspect;
 
 import in.riido.locksmith.DistributedLock;
+import in.riido.locksmith.LeaseExpirationBehavior;
 import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.exception.LockNotAcquiredException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -105,7 +107,15 @@ public class DistributedLockAspect {
       }
 
       LOG.debug("Lock [{}] acquired for [{}]", lockKey, methodName);
-      return joinPoint.proceed();
+
+      final long startTime = System.currentTimeMillis();
+      final Object result = joinPoint.proceed();
+      final long executionTime = System.currentTimeMillis() - startTime;
+
+      checkLeaseExpiration(
+          distributedLock.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
+
+      return result;
 
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -114,6 +124,46 @@ public class DistributedLockAspect {
     } finally {
       if (lockAcquired) {
         releaseLock(lock, lockKey, methodName);
+      }
+    }
+  }
+
+  /**
+   * Checks if the method execution time exceeded the lease duration and handles accordingly.
+   *
+   * @param behavior the configured behavior for lease expiration
+   * @param leaseTime the configured lease duration
+   * @param executionTimeMs the actual execution time in milliseconds
+   * @param lockKey the lock key
+   * @param methodName the method name
+   */
+  private void checkLeaseExpiration(
+      LeaseExpirationBehavior behavior,
+      Duration leaseTime,
+      long executionTimeMs,
+      String lockKey,
+      String methodName) {
+
+    final long leaseTimeMs = leaseTime.toMillis();
+
+    if (executionTimeMs <= leaseTimeMs) {
+      return;
+    }
+
+    switch (behavior) {
+      case LOG_WARNING ->
+          LOG.warn(
+              "Lock [{}] lease may have expired during execution of [{}]. "
+                  + "Lease time: {}ms, Execution time: {}ms. "
+                  + "Consider increasing the lease time.",
+              lockKey,
+              methodName,
+              leaseTimeMs,
+              executionTimeMs);
+      case THROW_EXCEPTION ->
+          throw new LeaseExpiredException(lockKey, methodName, leaseTimeMs, executionTimeMs);
+      case IGNORE -> {
+        // Do nothing
       }
     }
   }

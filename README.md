@@ -7,6 +7,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 - Simple `@DistributedLock` annotation for methods
 - Spring Expression Language (SpEL) support for dynamic lock keys
 - Read/Write lock support for concurrent reads with exclusive writes
+- Lease timeout detection to catch methods exceeding lock duration
 - Configurable lock acquisition modes and skip behaviors
 - Auto-configuration for Spring Boot 4.x
 - Uses Redisson for reliable distributed locks
@@ -177,6 +178,51 @@ public class ResourceService {
 
 **Important:** When using READ/WRITE locks, all methods accessing the same resource must use the same lock key to ensure proper synchronization.
 
+### Lease Timeout Detection
+
+Detect when a method's execution time exceeds the configured lease duration, which could indicate the lock expired during execution:
+
+```java
+@Service
+public class DataService {
+
+    // Log warning if execution exceeds lease time (default behavior)
+    @DistributedLock(key = "data-sync", leaseTime = "5m")
+    public void syncData() {
+        // If this takes > 5 minutes, a warning is logged
+    }
+
+    // Throw exception if execution exceeds lease time
+    @DistributedLock(
+        key = "critical-task",
+        leaseTime = "10m",
+        onLeaseExpired = LeaseExpirationBehavior.THROW_EXCEPTION
+    )
+    public void criticalTask() {
+        // If this takes > 10 minutes, LeaseExpiredException is thrown after completion
+    }
+
+    // Ignore lease expiration (not recommended for critical operations)
+    @DistributedLock(
+        key = "best-effort-task",
+        onLeaseExpired = LeaseExpirationBehavior.IGNORE
+    )
+    public void bestEffortTask() { }
+}
+```
+
+Handle `LeaseExpiredException`:
+
+```java
+try {
+    dataService.criticalTask();
+} catch (LeaseExpiredException e) {
+    log.error("Lock expired during execution: {} took {}ms but lease was {}ms",
+        e.getMethodName(), e.getExecutionTimeMs(), e.getLeaseTimeMs());
+    // Consider compensating actions
+}
+```
+
 ## Annotation Reference
 
 ### `@DistributedLock`
@@ -189,6 +235,7 @@ public class ResourceService {
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
+| `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
 ### `LockType`
 
@@ -211,6 +258,14 @@ public class ResourceService {
 |-------|-------------|
 | `THROW_EXCEPTION` | Throw `LockNotAcquiredException` |
 | `RETURN_DEFAULT` | Return null (objects) or default value (primitives) |
+
+### `LeaseExpirationBehavior`
+
+| Value | Description |
+|-------|-------------|
+| `LOG_WARNING` | Log a warning message (default) |
+| `THROW_EXCEPTION` | Throw `LeaseExpiredException` after method completes |
+| `IGNORE` | Silently ignore lease expiration |
 
 ## Exception Handling
 
