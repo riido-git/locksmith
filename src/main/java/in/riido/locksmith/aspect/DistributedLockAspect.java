@@ -2,6 +2,7 @@ package in.riido.locksmith.aspect;
 
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LockAcquisitionMode;
+import in.riido.locksmith.LockType;
 import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LockNotAcquiredException;
@@ -82,7 +83,7 @@ public class DistributedLockAspect {
 
     final String resolvedKey = resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
-    final RLock lock = redissonClient.getLock(lockKey);
+    final RLock lock = getLock(lockKey, distributedLock.type());
 
     final Duration leaseTime =
         resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
@@ -130,6 +131,21 @@ public class DistributedLockAspect {
           methodName,
           e.getMessage());
     }
+  }
+
+  /**
+   * Gets the appropriate lock based on the lock type.
+   *
+   * @param lockKey the key for the lock
+   * @param lockType the type of lock to acquire
+   * @return the appropriate RLock instance
+   */
+  private RLock getLock(String lockKey, LockType lockType) {
+    return switch (lockType) {
+      case REENTRANT -> redissonClient.getLock(lockKey);
+      case READ -> redissonClient.getReadWriteLock(lockKey).readLock();
+      case WRITE -> redissonClient.getReadWriteLock(lockKey).writeLock();
+    };
   }
 
   private boolean tryAcquireLock(

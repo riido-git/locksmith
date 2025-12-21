@@ -6,6 +6,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 
 - Simple `@DistributedLock` annotation for methods
 - Spring Expression Language (SpEL) support for dynamic lock keys
+- Read/Write lock support for concurrent reads with exclusive writes
 - Configurable lock acquisition modes and skip behaviors
 - Auto-configuration for Spring Boot 4.x
 - Uses Redisson for reliable distributed locks
@@ -146,6 +147,36 @@ Override the default lease time per method:
 public void longRunningTask() { }
 ```
 
+### Read/Write Locks
+
+Use read/write locks when you need concurrent reads but exclusive writes:
+
+```java
+@Service
+public class ResourceService {
+
+    // Multiple instances can read concurrently
+    @DistributedLock(key = "resource", type = LockType.READ)
+    public Data readResource() {
+        return loadData();
+    }
+
+    // Only one instance can write at a time, blocks all readers
+    @DistributedLock(key = "resource", type = LockType.WRITE)
+    public void writeResource(Data data) {
+        saveData(data);
+    }
+}
+```
+
+| Lock Type | Behavior |
+|-----------|----------|
+| `REENTRANT` | Exclusive lock (default) - only one holder at a time |
+| `READ` | Shared lock - multiple concurrent readers allowed |
+| `WRITE` | Exclusive lock - no readers or writers allowed simultaneously |
+
+**Important:** When using READ/WRITE locks, all methods accessing the same resource must use the same lock key to ensure proper synchronization.
+
 ## Annotation Reference
 
 ### `@DistributedLock`
@@ -153,10 +184,19 @@ public void longRunningTask() { }
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `key` | String | (required) | Lock key, supports SpEL |
+| `type` | LockType | `REENTRANT` | Type of lock (REENTRANT, READ, WRITE) |
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
+
+### `LockType`
+
+| Value | Description |
+|-------|-------------|
+| `REENTRANT` | Exclusive lock - only one holder at a time (default) |
+| `READ` | Shared lock - multiple concurrent readers allowed |
+| `WRITE` | Exclusive lock - blocks all readers and writers |
 
 ### `LockAcquisitionMode`
 
