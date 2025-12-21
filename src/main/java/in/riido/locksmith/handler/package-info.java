@@ -14,7 +14,7 @@
  * </ul>
  *
  * @author Garvit Joshi
- * @since 1.0.2
+ * @since 1.2.0
  * @see in.riido.locksmith.handler.LockSkipHandler
  */
 package in.riido.locksmith.handler;

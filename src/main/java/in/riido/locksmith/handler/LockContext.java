@@ -14,7 +14,7 @@ import java.lang.reflect.Method;
  * @param args the arguments passed to the method
  * @param returnType the return type of the method
  * @author Garvit Joshi
- * @since 1.0.2
+ * @since 1.2.0
  */
 public record LockContext(
     String lockKey, String methodName, Method method, Object[] args, Class<?> returnType) {}

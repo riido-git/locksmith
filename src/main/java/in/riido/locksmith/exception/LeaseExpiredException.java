@@ -8,7 +8,7 @@ package in.riido.locksmith.exception;
  * expired during execution, potentially allowing concurrent access by other instances.
  *
  * @author Garvit Joshi
- * @since 1.0.2
+ * @since 1.2.0
  */
 public class LeaseExpiredException extends RuntimeException {
 

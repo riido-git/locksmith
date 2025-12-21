@@ -37,7 +37,7 @@ package in.riido.locksmith.handler;
  *
  * @author Garvit Joshi
  * @see LockContext
- * @since 1.0.2
+ * @since 1.2.0
  */
 public interface LockSkipHandler {
 

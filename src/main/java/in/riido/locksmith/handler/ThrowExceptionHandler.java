@@ -7,7 +7,7 @@ import in.riido.locksmith.exception.LockNotAcquiredException;
  * acquired. This is the default handler used by {@link in.riido.locksmith.DistributedLock}.
  *
  * @author Garvit Joshi
- * @since 1.0.2
+ * @since 1.2.0
  */
 public class ThrowExceptionHandler implements LockSkipHandler {
 
