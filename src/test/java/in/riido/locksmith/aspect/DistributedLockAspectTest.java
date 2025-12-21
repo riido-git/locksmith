@@ -13,7 +13,6 @@ import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.exception.LockNotAcquiredException;
-import in.riido.locksmith.handler.DefaultSkipHandler;
 import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
 import in.riido.locksmith.handler.ReturnDefaultHandler;
@@ -69,7 +68,7 @@ class DistributedLockAspectTest {
         onSkip,
         LockType.REENTRANT,
         LeaseExpirationBehavior.IGNORE,
-        DefaultSkipHandler.class);
+        getHandlerForSkipBehavior(onSkip));
   }
 
   private void setupAnnotation(
@@ -87,7 +86,7 @@ class DistributedLockAspectTest {
         onSkip,
         lockType,
         LeaseExpirationBehavior.IGNORE,
-        DefaultSkipHandler.class);
+        getHandlerForSkipBehavior(onSkip));
   }
 
   private void setupAnnotation(
@@ -99,7 +98,21 @@ class DistributedLockAspectTest {
       LockType lockType,
       LeaseExpirationBehavior onLeaseExpired) {
     setupAnnotation(
-        key, mode, leaseTime, waitTime, onSkip, lockType, onLeaseExpired, DefaultSkipHandler.class);
+        key,
+        mode,
+        leaseTime,
+        waitTime,
+        onSkip,
+        lockType,
+        onLeaseExpired,
+        getHandlerForSkipBehavior(onSkip));
+  }
+
+  private Class<? extends LockSkipHandler> getHandlerForSkipBehavior(SkipBehavior onSkip) {
+    return switch (onSkip) {
+      case RETURN_DEFAULT -> ReturnDefaultHandler.class;
+      case THROW_EXCEPTION -> ThrowExceptionHandler.class;
+    };
   }
 
   private void setupAnnotation(
@@ -1638,24 +1651,6 @@ class DistributedLockAspectTest {
       Object result = aspect.handleDistributedLock(joinPoint);
 
       assertNull(result);
-    }
-
-    @Test
-    @DisplayName("Should fall back to onSkip enum when DefaultSkipHandler is used")
-    void shouldFallBackToOnSkipEnumWhenDefaultHandler() throws Throwable {
-      setupAnnotation(
-          "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
-          "",
-          "",
-          SkipBehavior.THROW_EXCEPTION,
-          LockType.REENTRANT,
-          LeaseExpirationBehavior.IGNORE,
-          DefaultSkipHandler.class);
-      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
-
-      assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
     }
 
     @Test

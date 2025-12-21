@@ -6,8 +6,6 @@ import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
-import in.riido.locksmith.exception.LockNotAcquiredException;
-import in.riido.locksmith.handler.DefaultSkipHandler;
 import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
 import java.lang.reflect.Method;
@@ -221,28 +219,8 @@ public class DistributedLockAspect {
       ProceedingJoinPoint joinPoint,
       String lockKey,
       String methodName) {
-
-    Class<? extends LockSkipHandler> handlerClass = annotation.skipHandler();
-
-    // Use custom handler if specified (not the default marker class)
-    if (handlerClass != DefaultSkipHandler.class) {
-      return invokeCustomHandler(handlerClass, joinPoint, lockKey, methodName);
-    }
-
-    // Fall back to enum-based behavior
-    return switch (annotation.onSkip()) {
-      case THROW_EXCEPTION -> throw new LockNotAcquiredException(lockKey, methodName);
-      case RETURN_DEFAULT -> getDefaultReturnValue(joinPoint);
-    };
-  }
-
-  private Object invokeCustomHandler(
-      Class<? extends LockSkipHandler> handlerClass,
-      ProceedingJoinPoint joinPoint,
-      String lockKey,
-      String methodName) {
     try {
-      LockSkipHandler handler = handlerClass.getDeclaredConstructor().newInstance();
+      LockSkipHandler handler = annotation.skipHandler().getDeclaredConstructor().newInstance();
       MethodSignature signature = (MethodSignature) joinPoint.getSignature();
       LockContext context =
           new LockContext(
@@ -255,24 +233,10 @@ public class DistributedLockAspect {
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException(
           "Failed to instantiate skip handler: "
-              + handlerClass.getName()
+              + annotation.skipHandler().getName()
               + ". Ensure it has a public no-argument constructor.",
           e);
     }
-  }
-
-  private Object getDefaultReturnValue(ProceedingJoinPoint joinPoint) {
-    final Class<?> returnType = ((MethodSignature) joinPoint.getSignature()).getReturnType();
-    if (returnType == void.class) return null;
-    if (returnType == boolean.class) return false;
-    if (returnType == int.class) return 0;
-    if (returnType == long.class) return 0L;
-    if (returnType == double.class) return 0.0d;
-    if (returnType == float.class) return 0.0f;
-    if (returnType == byte.class) return (byte) 0;
-    if (returnType == short.class) return (short) 0;
-    if (returnType == char.class) return '\u0000';
-    return null;
   }
 
   /**

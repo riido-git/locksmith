@@ -270,7 +270,7 @@ When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
-| `skipHandler` | Class | `DefaultSkipHandler` | Custom handler class (overrides onSkip) |
+| `skipHandler` | Class | `ThrowExceptionHandler` | Custom handler class (overrides onSkip) |
 | `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
 ### `LockType`

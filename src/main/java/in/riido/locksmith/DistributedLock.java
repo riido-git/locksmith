@@ -1,8 +1,8 @@
 package in.riido.locksmith;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
-import in.riido.locksmith.handler.DefaultSkipHandler;
 import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.handler.ThrowExceptionHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -138,10 +138,14 @@ public @interface DistributedLock {
   /**
    * Custom handler for lock acquisition failures.
    *
-   * <p>When specified with a class other than {@link DefaultSkipHandler}, this handler takes
-   * precedence over {@link #onSkip()}. The handler must have a public no-argument constructor.
+   * <p>The handler must have a public no-argument constructor. Built-in handlers:
    *
-   * <p>Example:
+   * <ul>
+   *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+   *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null/default values
+   * </ul>
+   *
+   * <p>Example custom handler:
    *
    * <pre>{@code
    * public class MyCustomHandler implements LockSkipHandler {
@@ -156,11 +160,10 @@ public @interface DistributedLock {
    * public void myTask() { }
    * }</pre>
    *
-   * @return the skip handler class, defaults to DefaultSkipHandler (which uses onSkip behavior)
+   * @return the skip handler class, defaults to ThrowExceptionHandler
    * @see LockSkipHandler
-   * @see #onSkip()
    */
-  Class<? extends LockSkipHandler> skipHandler() default DefaultSkipHandler.class;
+  Class<? extends LockSkipHandler> skipHandler() default ThrowExceptionHandler.class;
 
   /**
    * Defines the behavior when method execution time exceeds the configured lease duration.
