@@ -41,6 +41,14 @@ import java.lang.annotation.Target;
  * // SpEL with concatenation
  * @DistributedLock(key = "'user-' + #userId")
  * public void processUser(Long userId) { }
+ *
+ * // Read lock - allows concurrent reads
+ * @DistributedLock(key = "resource", type = LockType.READ)
+ * public Data readData() { }
+ *
+ * // Write lock - exclusive access for writes
+ * @DistributedLock(key = "resource", type = LockType.WRITE)
+ * public void writeData(Data data) { }
  * }</pre>
  *
  * @author Garvit Joshi
@@ -61,6 +69,22 @@ public @interface DistributedLock {
    * @return the lock key (literal or SpEL expression)
    */
   String key();
+
+  /**
+   * The type of lock to acquire.
+   *
+   * <ul>
+   *   <li>{@link LockType#REENTRANT} (default): Exclusive lock, only one holder at a time
+   *   <li>{@link LockType#READ}: Shared lock, multiple concurrent readers allowed
+   *   <li>{@link LockType#WRITE}: Exclusive lock, no readers or writers allowed simultaneously
+   * </ul>
+   *
+   * <p>When using READ or WRITE locks, all methods accessing the same resource should use the same
+   * lock key to ensure proper synchronization.
+   *
+   * @return the lock type, defaults to REENTRANT
+   */
+  LockType type() default LockType.REENTRANT;
 
   /**
    * The lock acquisition mode. Determines behavior when the lock is already held.

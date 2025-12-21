@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LockAcquisitionMode;
+import in.riido.locksmith.LockType;
 import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LockNotAcquiredException;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
+import org.redisson.api.RReadWriteLock;
 import org.redisson.api.RedissonClient;
 
 @DisplayName("DistributedLockAspect Tests")
@@ -52,12 +54,23 @@ class DistributedLockAspectTest {
       String leaseTime,
       String waitTime,
       SkipBehavior onSkip) {
+    setupAnnotation(key, mode, leaseTime, waitTime, onSkip, LockType.REENTRANT);
+  }
+
+  private void setupAnnotation(
+      String key,
+      LockAcquisitionMode mode,
+      String leaseTime,
+      String waitTime,
+      SkipBehavior onSkip,
+      LockType lockType) {
     DistributedLock annotation = mock(DistributedLock.class);
     when(annotation.key()).thenReturn(key);
     when(annotation.mode()).thenReturn(mode);
     when(annotation.leaseTime()).thenReturn(leaseTime);
     when(annotation.waitTime()).thenReturn(waitTime);
     when(annotation.onSkip()).thenReturn(onSkip);
+    when(annotation.type()).thenReturn(lockType);
 
     Method mockMethod = mock(Method.class);
     when(methodSignature.getMethod()).thenReturn(mockMethod);
@@ -1166,6 +1179,221 @@ class DistributedLockAspectTest {
               IllegalArgumentException.class, () -> aspect.handleDistributedLock(joinPoint));
 
       assertTrue(thrown.getMessage().contains("evaluated to blank"));
+    }
+  }
+
+  @Nested
+  @DisplayName("Lock Type Tests")
+  class LockTypeTests {
+
+    private RReadWriteLock readWriteLock;
+    private RLock readLock;
+    private RLock writeLock;
+
+    @BeforeEach
+    void setUpReadWriteLock() {
+      readWriteLock = mock(RReadWriteLock.class);
+      readLock = mock(RLock.class);
+      writeLock = mock(RLock.class);
+      when(redissonClient.getReadWriteLock("lock:test-lock")).thenReturn(readWriteLock);
+      when(readWriteLock.readLock()).thenReturn(readLock);
+      when(readWriteLock.writeLock()).thenReturn(writeLock);
+    }
+
+    @Test
+    @DisplayName("Should use reentrant lock for REENTRANT type")
+    void shouldUseReentrantLockForReentrantType() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(redissonClient).getLock("lock:test-lock");
+      verify(redissonClient, never()).getReadWriteLock(anyString());
+    }
+
+    @Test
+    @DisplayName("Should use read lock for READ type")
+    void shouldUseReadLockForReadType() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.READ);
+      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(redissonClient).getReadWriteLock("lock:test-lock");
+      verify(readWriteLock).readLock();
+      verify(readWriteLock, never()).writeLock();
+      verify(redissonClient, never()).getLock(anyString());
+    }
+
+    @Test
+    @DisplayName("Should use write lock for WRITE type")
+    void shouldUseWriteLockForWriteType() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.WRITE);
+      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(redissonClient).getReadWriteLock("lock:test-lock");
+      verify(readWriteLock).writeLock();
+      verify(readWriteLock, never()).readLock();
+      verify(redissonClient, never()).getLock(anyString());
+    }
+
+    @Test
+    @DisplayName("Should release read lock after execution")
+    void shouldReleaseReadLockAfterExecution() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.READ);
+      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(readLock).unlock();
+    }
+
+    @Test
+    @DisplayName("Should release write lock after execution")
+    void shouldReleaseWriteLockAfterExecution() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.WRITE);
+      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(writeLock).unlock();
+    }
+
+    @Test
+    @DisplayName("Should skip and return default when read lock not acquired")
+    void shouldSkipWhenReadLockNotAcquired() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.RETURN_DEFAULT,
+          LockType.READ);
+      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+      verify(joinPoint, never()).proceed();
+    }
+
+    @Test
+    @DisplayName("Should throw exception when write lock not acquired with THROW_EXCEPTION")
+    void shouldThrowExceptionWhenWriteLockNotAcquired() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.WRITE);
+      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+    }
+
+    @Test
+    @DisplayName("Should use custom lease time with read lock")
+    void shouldUseCustomLeaseTimeWithReadLock() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "5m",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.READ);
+      when(readLock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(readLock).tryLock(0, 300, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should use WAIT_AND_SKIP mode with write lock")
+    void shouldUseWaitAndSkipModeWithWriteLock() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.WAIT_AND_SKIP,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.WRITE);
+      when(writeLock.tryLock(60, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(writeLock).tryLock(60, 600, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should handle exception in method and release read lock")
+    void shouldHandleExceptionAndReleaseReadLock() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.READ);
+      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenThrow(new RuntimeException("Test exception"));
+
+      assertThrows(RuntimeException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      verify(readLock).unlock();
     }
   }
 }
