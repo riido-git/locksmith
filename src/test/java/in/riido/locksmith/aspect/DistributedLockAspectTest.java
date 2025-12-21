@@ -13,6 +13,11 @@ import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.exception.LockNotAcquiredException;
+import in.riido.locksmith.handler.DefaultSkipHandler;
+import in.riido.locksmith.handler.LockContext;
+import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.handler.ThrowExceptionHandler;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -57,7 +62,14 @@ class DistributedLockAspectTest {
       String waitTime,
       SkipBehavior onSkip) {
     setupAnnotation(
-        key, mode, leaseTime, waitTime, onSkip, LockType.REENTRANT, LeaseExpirationBehavior.IGNORE);
+        key,
+        mode,
+        leaseTime,
+        waitTime,
+        onSkip,
+        LockType.REENTRANT,
+        LeaseExpirationBehavior.IGNORE,
+        DefaultSkipHandler.class);
   }
 
   private void setupAnnotation(
@@ -68,7 +80,14 @@ class DistributedLockAspectTest {
       SkipBehavior onSkip,
       LockType lockType) {
     setupAnnotation(
-        key, mode, leaseTime, waitTime, onSkip, lockType, LeaseExpirationBehavior.IGNORE);
+        key,
+        mode,
+        leaseTime,
+        waitTime,
+        onSkip,
+        lockType,
+        LeaseExpirationBehavior.IGNORE,
+        DefaultSkipHandler.class);
   }
 
   private void setupAnnotation(
@@ -79,6 +98,19 @@ class DistributedLockAspectTest {
       SkipBehavior onSkip,
       LockType lockType,
       LeaseExpirationBehavior onLeaseExpired) {
+    setupAnnotation(
+        key, mode, leaseTime, waitTime, onSkip, lockType, onLeaseExpired, DefaultSkipHandler.class);
+  }
+
+  private void setupAnnotation(
+      String key,
+      LockAcquisitionMode mode,
+      String leaseTime,
+      String waitTime,
+      SkipBehavior onSkip,
+      LockType lockType,
+      LeaseExpirationBehavior onLeaseExpired,
+      Class<? extends LockSkipHandler> skipHandler) {
     DistributedLock annotation = mock(DistributedLock.class);
     when(annotation.key()).thenReturn(key);
     when(annotation.mode()).thenReturn(mode);
@@ -87,6 +119,7 @@ class DistributedLockAspectTest {
     when(annotation.onSkip()).thenReturn(onSkip);
     when(annotation.type()).thenReturn(lockType);
     when(annotation.onLeaseExpired()).thenReturn(onLeaseExpired);
+    doReturn(skipHandler).when(annotation).skipHandler();
 
     Method mockMethod = mock(Method.class);
     when(methodSignature.getMethod()).thenReturn(mockMethod);
@@ -1562,6 +1595,172 @@ class DistributedLockAspectTest {
       assertTrue(exception.getMessage().contains("TestClass.testMethod"));
       assertTrue(exception.getMessage().contains("1000"));
       assertTrue(exception.getMessage().contains("2000"));
+    }
+  }
+
+  @Nested
+  @DisplayName("Custom Skip Handler Tests")
+  class CustomSkipHandlerTests {
+
+    @Test
+    @DisplayName("Should use ThrowExceptionHandler when specified")
+    void shouldUseThrowExceptionHandler() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.RETURN_DEFAULT, // This should be ignored
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          ThrowExceptionHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+    }
+
+    @Test
+    @DisplayName("Should use ReturnDefaultHandler when specified")
+    void shouldUseReturnDefaultHandler() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION, // This should be ignored
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+    }
+
+    @Test
+    @DisplayName("Should fall back to onSkip enum when DefaultSkipHandler is used")
+    void shouldFallBackToOnSkipEnumWhenDefaultHandler() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          DefaultSkipHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+    }
+
+    @Test
+    @DisplayName("Should use custom handler that returns specific value")
+    void shouldUseCustomHandlerReturningSpecificValue() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          FallbackValueHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("fallback-value", result);
+    }
+
+    @Test
+    @DisplayName("Should pass correct context to custom handler")
+    void shouldPassCorrectContextToCustomHandler() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          ContextCapturingHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(joinPoint.getArgs()).thenReturn(new Object[] {"arg1", 42});
+
+      aspect.handleDistributedLock(joinPoint);
+
+      assertNotNull(ContextCapturingHandler.capturedContext);
+      assertEquals("lock:test-lock", ContextCapturingHandler.capturedContext.lockKey());
+      assertEquals("TestClass.testMethod", ContextCapturingHandler.capturedContext.methodName());
+      assertArrayEquals(new Object[] {"arg1", 42}, ContextCapturingHandler.capturedContext.args());
+    }
+
+    @Test
+    @DisplayName("ReturnDefaultHandler should return false for boolean return type")
+    void returnDefaultHandlerShouldReturnFalseForBoolean() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(boolean.class);
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(false, result);
+    }
+
+    @Test
+    @DisplayName("ReturnDefaultHandler should return 0 for int return type")
+    void returnDefaultHandlerShouldReturnZeroForInt() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(int.class);
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          SkipBehavior.THROW_EXCEPTION,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0, result);
+    }
+  }
+
+  /** Test handler that returns a specific fallback value. */
+  public static class FallbackValueHandler implements LockSkipHandler {
+    @Override
+    public Object handle(LockContext context) {
+      return "fallback-value";
+    }
+  }
+
+  /** Test handler that captures the context for verification. */
+  public static class ContextCapturingHandler implements LockSkipHandler {
+    public static LockContext capturedContext;
+
+    @Override
+    public Object handle(LockContext context) {
+      capturedContext = context;
+      return null;
     }
   }
 }

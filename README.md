@@ -8,6 +8,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 - Spring Expression Language (SpEL) support for dynamic lock keys
 - Read/Write lock support for concurrent reads with exclusive writes
 - Lease timeout detection to catch methods exceeding lock duration
+- Custom skip handlers for advanced lock failure handling
 - Configurable lock acquisition modes and skip behaviors
 - Auto-configuration for Spring Boot 4.x
 - Uses Redisson for reliable distributed locks
@@ -223,6 +224,40 @@ try {
 }
 ```
 
+### Custom Skip Handlers
+
+For advanced lock failure handling, implement the `LockSkipHandler` interface:
+
+```java
+public class AlertingSkipHandler implements LockSkipHandler {
+
+    @Override
+    public Object handle(LockContext context) {
+        // Send alert, log to specific system, or execute alternative logic
+        alertService.sendAlert("Lock not acquired: " + context.lockKey());
+
+        // Return a fallback value
+        return "fallback-result";
+    }
+}
+
+@DistributedLock(key = "critical-task", skipHandler = AlertingSkipHandler.class)
+public String criticalTask() { }
+```
+
+The `LockContext` provides:
+- `lockKey()` - The Redis lock key
+- `methodName()` - The formatted method name
+- `method()` - The intercepted Method
+- `args()` - The method arguments
+- `returnType()` - The method's return type
+
+Built-in handlers:
+- `ThrowExceptionHandler` - Throws `LockNotAcquiredException`
+- `ReturnDefaultHandler` - Returns null/default values
+
+When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
+
 ## Annotation Reference
 
 ### `@DistributedLock`
@@ -235,6 +270,7 @@ try {
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
+| `skipHandler` | Class | `DefaultSkipHandler` | Custom handler class (overrides onSkip) |
 | `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
 ### `LockType`
