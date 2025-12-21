@@ -8,7 +8,7 @@ package in.riido.locksmith;
  * how to handle detection of such scenarios after method completion.
  *
  * @author Garvit Joshi
- * @since 1.2.0
+ * @since 1.0.2
  */
 public enum LeaseExpirationBehavior {
 

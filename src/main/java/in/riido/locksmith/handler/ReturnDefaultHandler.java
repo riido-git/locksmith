@@ -11,7 +11,7 @@ package in.riido.locksmith.handler;
  * </ul>
  *
  * @author Garvit Joshi
- * @since 1.3.0
+ * @since 1.0.2
  */
 public class ReturnDefaultHandler implements LockSkipHandler {
 

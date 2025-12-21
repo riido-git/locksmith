@@ -282,7 +282,7 @@ public class DistributedLockAspect {
     }
 
     String resolvedKey = result.toString();
-    if (resolvedKey == null || resolvedKey.isBlank()) {
+    if (resolvedKey.isBlank()) {
       throw new IllegalArgumentException(
           "SpEL expression '"
               + keyExpression

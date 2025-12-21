@@ -4,7 +4,7 @@ package in.riido.locksmith;
  * Defines the type of lock to acquire for distributed locking.
  *
  * @author Garvit Joshi
- * @since 1.1.0
+ * @since 1.0.2
  */
 public enum LockType {
 
