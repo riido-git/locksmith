@@ -4,10 +4,10 @@ import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LeaseExpirationBehavior;
 import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
-import in.riido.locksmith.SkipBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
-import in.riido.locksmith.exception.LockNotAcquiredException;
+import in.riido.locksmith.handler.LockContext;
+import in.riido.locksmith.handler.LockSkipHandler;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -103,7 +103,7 @@ public class DistributedLockAspect {
             "Skipping execution of [{}] - lock [{}] is held by another instance",
             methodName,
             lockKey);
-        return handleSkip(distributedLock.onSkip(), joinPoint, lockKey, methodName);
+        return handleSkip(distributedLock, joinPoint, lockKey, methodName);
       }
 
       LOG.debug("Lock [{}] acquired for [{}]", lockKey, methodName);
@@ -120,7 +120,7 @@ public class DistributedLockAspect {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
-      return handleSkip(distributedLock.onSkip(), joinPoint, lockKey, methodName);
+      return handleSkip(distributedLock, joinPoint, lockKey, methodName);
     } finally {
       if (lockAcquired) {
         releaseLock(lock, lockKey, methodName);
@@ -215,25 +215,28 @@ public class DistributedLockAspect {
   }
 
   private Object handleSkip(
-      SkipBehavior skipBehavior, ProceedingJoinPoint joinPoint, String lockKey, String methodName) {
-    return switch (skipBehavior) {
-      case THROW_EXCEPTION -> throw new LockNotAcquiredException(lockKey, methodName);
-      case RETURN_DEFAULT -> getDefaultReturnValue(joinPoint);
-    };
-  }
-
-  private Object getDefaultReturnValue(ProceedingJoinPoint joinPoint) {
-    final Class<?> returnType = ((MethodSignature) joinPoint.getSignature()).getReturnType();
-    if (returnType == void.class) return null;
-    if (returnType == boolean.class) return false;
-    if (returnType == int.class) return 0;
-    if (returnType == long.class) return 0L;
-    if (returnType == double.class) return 0.0d;
-    if (returnType == float.class) return 0.0f;
-    if (returnType == byte.class) return (byte) 0;
-    if (returnType == short.class) return (short) 0;
-    if (returnType == char.class) return '\u0000';
-    return null;
+      DistributedLock annotation,
+      ProceedingJoinPoint joinPoint,
+      String lockKey,
+      String methodName) {
+    try {
+      LockSkipHandler handler = annotation.skipHandler().getDeclaredConstructor().newInstance();
+      MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+      LockContext context =
+          new LockContext(
+              lockKey,
+              methodName,
+              signature.getMethod(),
+              joinPoint.getArgs(),
+              signature.getReturnType());
+      return handler.handle(context);
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException(
+          "Failed to instantiate skip handler: "
+              + annotation.skipHandler().getName()
+              + ". Ensure it has a public no-argument constructor.",
+          e);
+    }
   }
 
   /**
@@ -279,7 +282,7 @@ public class DistributedLockAspect {
     }
 
     String resolvedKey = result.toString();
-    if (resolvedKey == null || resolvedKey.isBlank()) {
+    if (resolvedKey.isBlank()) {
       throw new IllegalArgumentException(
           "SpEL expression '"
               + keyExpression

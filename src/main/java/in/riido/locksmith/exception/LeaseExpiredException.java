@@ -8,9 +8,11 @@ package in.riido.locksmith.exception;
  * expired during execution, potentially allowing concurrent access by other instances.
  *
  * @author Garvit Joshi
- * @since 1.2.0
+ * @since 1.0.2
  */
 public class LeaseExpiredException extends RuntimeException {
+
+  @java.io.Serial private static final long serialVersionUID = 1L;
 
   private final String lockKey;
   private final String methodName;

@@ -1,6 +1,8 @@
 package in.riido.locksmith;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
+import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.handler.ThrowExceptionHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -11,12 +13,12 @@ import java.lang.annotation.Target;
  * Annotation to apply distributed locking on a method. Only one instance across all servers can
  * execute the annotated method at a time for the given lock key.
  *
- * <p>When the lock cannot be acquired, the behavior is controlled by {@link #onSkip()}:
+ * <p>When the lock cannot be acquired, the behavior is controlled by {@link #skipHandler()}:
  *
  * <ul>
- *   <li>{@link SkipBehavior#THROW_EXCEPTION} (default): Throws {@link LockNotAcquiredException}
- *   <li>{@link SkipBehavior#RETURN_DEFAULT}: Returns null for objects, default values for
- *       primitives
+ *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+ *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null for objects, default
+ *       values for primitives
  * </ul>
  *
  * <p>Usage examples:
@@ -27,7 +29,7 @@ import java.lang.annotation.Target;
  * public void criticalTask() { }
  *
  * // For scheduled tasks - silently skip if lock not acquired
- * @DistributedLock(key = "scheduled-task", onSkip = SkipBehavior.RETURN_DEFAULT)
+ * @DistributedLock(key = "scheduled-task", skipHandler = ReturnDefaultHandler.class)
  * public void scheduledTask() { }
  *
  * // SpEL with method parameter - lock per user
@@ -124,11 +126,34 @@ public @interface DistributedLock {
   String waitTime() default "";
 
   /**
-   * Defines the behavior when the lock cannot be acquired and method execution is skipped.
+   * Custom handler for lock acquisition failures.
    *
-   * @return the skip behavior, defaults to THROW_EXCEPTION
+   * <p>The handler must have a public no-argument constructor. Built-in handlers:
+   *
+   * <ul>
+   *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+   *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null/default values
+   * </ul>
+   *
+   * <p>Example custom handler:
+   *
+   * <pre>{@code
+   * public class MyCustomHandler implements LockSkipHandler {
+   *     @Override
+   *     public Object handle(LockContext context) {
+   *         log.warn("Lock {} not acquired for {}", context.lockKey(), context.methodName());
+   *         return null;
+   *     }
+   * }
+   *
+   * @DistributedLock(key = "my-task", skipHandler = MyCustomHandler.class)
+   * public void myTask() { }
+   * }</pre>
+   *
+   * @return the skip handler class, defaults to ThrowExceptionHandler
+   * @see LockSkipHandler
    */
-  SkipBehavior onSkip() default SkipBehavior.THROW_EXCEPTION;
+  Class<? extends LockSkipHandler> skipHandler() default ThrowExceptionHandler.class;
 
   /**
    * Defines the behavior when method execution time exceeds the configured lease duration.
