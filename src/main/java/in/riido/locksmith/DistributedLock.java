@@ -51,58 +51,58 @@ import java.lang.annotation.Target;
 @Documented
 public @interface DistributedLock {
 
-    /**
-     * The unique key for the lock. This key is used to identify the lock in Redis. Different tasks
-     * should use different keys.
-     *
-     * <p>Supports Spring Expression Language (SpEL). Use {@code #paramName} to reference method
-     * parameters, {@code #paramName.property} to access object properties.
-     *
-     * @return the lock key (literal or SpEL expression)
-     */
-    String key();
+  /**
+   * The unique key for the lock. This key is used to identify the lock in Redis. Different tasks
+   * should use different keys.
+   *
+   * <p>Supports Spring Expression Language (SpEL). Use {@code #paramName} to reference method
+   * parameters, {@code #paramName.property} to access object properties.
+   *
+   * @return the lock key (literal or SpEL expression)
+   */
+  String key();
 
-    /**
-     * The lock acquisition mode. Determines behavior when the lock is already held.
-     *
-     * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
-     */
-    LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
+  /**
+   * The lock acquisition mode. Determines behavior when the lock is already held.
+   *
+   * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
+   */
+  LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
 
-    /**
-     * Override the default lease time. The lock will be automatically released after this duration.
-     * Use an empty string to use the default from configuration.
-     *
-     * <p>Accepts duration strings in the following formats:
-     *
-     * <ul>
-     *   <li>Simple format: "10m" (10 minutes), "30s" (30 seconds), "1h" (1 hour)
-     *   <li>ISO-8601 format: "PT10M" (10 minutes), "PT30S" (30 seconds)
-     * </ul>
-     *
-     * @return lease time duration string, empty for default
-     */
-    String leaseTime() default "";
+  /**
+   * Override the default lease time. The lock will be automatically released after this duration.
+   * Use an empty string to use the default from configuration.
+   *
+   * <p>Accepts duration strings in the following formats:
+   *
+   * <ul>
+   *   <li>Simple format: "10m" (10 minutes), "30s" (30 seconds), "1h" (1 hour)
+   *   <li>ISO-8601 format: "PT10M" (10 minutes), "PT30S" (30 seconds)
+   * </ul>
+   *
+   * @return lease time duration string, empty for default
+   */
+  String leaseTime() default "";
 
-    /**
-     * Override the default wait time for WAIT_AND_SKIP mode. Use an empty string to use the default
-     * from configuration.
-     *
-     * <p>Accepts duration strings in the following formats:
-     *
-     * <ul>
-     *   <li>Simple format: "10s" (10 seconds), "5m" (5 minutes), "1h" (1 hour)
-     *   <li>ISO-8601 format: "PT10S" (10 seconds), "PT5M" (5 minutes)
-     * </ul>
-     *
-     * @return wait time duration string, empty for default
-     */
-    String waitTime() default "";
+  /**
+   * Override the default wait time for WAIT_AND_SKIP mode. Use an empty string to use the default
+   * from configuration.
+   *
+   * <p>Accepts duration strings in the following formats:
+   *
+   * <ul>
+   *   <li>Simple format: "10s" (10 seconds), "5m" (5 minutes), "1h" (1 hour)
+   *   <li>ISO-8601 format: "PT10S" (10 seconds), "PT5M" (5 minutes)
+   * </ul>
+   *
+   * @return wait time duration string, empty for default
+   */
+  String waitTime() default "";
 
-    /**
-     * Defines the behavior when the lock cannot be acquired and method execution is skipped.
-     *
-     * @return the skip behavior, defaults to THROW_EXCEPTION
-     */
-    SkipBehavior onSkip() default SkipBehavior.THROW_EXCEPTION;
+  /**
+   * Defines the behavior when the lock cannot be acquired and method execution is skipped.
+   *
+   * @return the skip behavior, defaults to THROW_EXCEPTION
+   */
+  SkipBehavior onSkip() default SkipBehavior.THROW_EXCEPTION;
 }

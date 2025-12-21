@@ -8,7 +8,6 @@ import in.riido.locksmith.exception.LockNotAcquiredException;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
-import org.springframework.boot.convert.DurationStyle;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -17,6 +16,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.expression.MethodBasedEvaluationContext;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.Ordered;
@@ -80,15 +80,16 @@ public class DistributedLockAspect {
               + signature.getName());
     }
 
-    final String resolvedKey =
-        resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
+    final String resolvedKey = resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = redissonClient.getLock(lockKey);
 
-    final Duration leaseTime = parseDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
-    final Duration waitTime = parseDuration(distributedLock.waitTime(), lockProperties.waitTime());
+    final Duration leaseTime =
+        resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
+    final Duration waitTime =
+        resolveDuration(distributedLock.waitTime(), lockProperties.waitTime());
 
-    final String methodName = getMethodName(joinPoint);
+    final String methodName = formatMethodSignature(joinPoint);
     boolean lockAcquired = false;
 
     try {
@@ -142,16 +143,13 @@ public class DistributedLockAspect {
     };
   }
 
-  private String getMethodName(ProceedingJoinPoint joinPoint) {
+  private String formatMethodSignature(ProceedingJoinPoint joinPoint) {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
 
   private Object handleSkip(
-      SkipBehavior skipBehavior,
-      ProceedingJoinPoint joinPoint,
-      String lockKey,
-      String methodName) {
+      SkipBehavior skipBehavior, ProceedingJoinPoint joinPoint, String lockKey, String methodName) {
     return switch (skipBehavior) {
       case THROW_EXCEPTION -> throw new LockNotAcquiredException(lockKey, methodName);
       case RETURN_DEFAULT -> getDefaultReturnValue(joinPoint);
@@ -173,13 +171,14 @@ public class DistributedLockAspect {
   }
 
   /**
-   * Parses a duration string into a Duration object.
+   * Resolves a duration from the given string, falling back to the default if blank.
    *
    * @param durationString the duration string (e.g., "10m", "30s", "PT10M")
-   * @param defaultValue the default value to use if the string is empty
-   * @return the parsed Duration, or the default value if the string is empty
+   * @param defaultValue the default value to use if the string is blank
+   * @return the resolved Duration, or the default value if the string is blank
+   * @throws IllegalArgumentException if the value is not a known style or cannot be * parsed
    */
-  private Duration parseDuration(String durationString, Duration defaultValue) {
+  private Duration resolveDuration(String durationString, Duration defaultValue) {
     if (durationString == null || durationString.isBlank()) {
       return defaultValue;
     }
@@ -210,16 +209,16 @@ public class DistributedLockAspect {
           "SpEL expression '"
               + keyExpression
               + "' evaluated to null for method: "
-              + getMethodName(joinPoint));
+              + formatMethodSignature(joinPoint));
     }
 
     String resolvedKey = result.toString();
-    if (resolvedKey.isBlank()) {
+    if (resolvedKey == null || resolvedKey.isBlank()) {
       throw new IllegalArgumentException(
           "SpEL expression '"
               + keyExpression
               + "' evaluated to blank for method: "
-              + getMethodName(joinPoint));
+              + formatMethodSignature(joinPoint));
     }
 
     return resolvedKey;

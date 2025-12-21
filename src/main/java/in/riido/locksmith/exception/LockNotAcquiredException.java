@@ -21,7 +21,10 @@ public class LockNotAcquiredException extends RuntimeException {
 
   @Serial private static final long serialVersionUID = -6494677132062171394L;
 
+  /** The Redis key of the lock that could not be acquired. */
   private final String lockKey;
+
+  /** The name of the method that required the lock. */
   private final String methodName;
 
   /**

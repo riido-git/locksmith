@@ -8,15 +8,15 @@ package in.riido.locksmith;
  */
 public enum LockAcquisitionMode {
 
-    /**
-     * Immediately skip execution if the lock is already held by another instance. Does not wait for
-     * the lock to become available.
-     */
-    SKIP_IMMEDIATELY,
+  /**
+   * Immediately skip execution if the lock is already held by another instance. Does not wait for
+   * the lock to become available.
+   */
+  SKIP_IMMEDIATELY,
 
-    /**
-     * Wait for a configured duration to acquire the lock. If the lock cannot be acquired within the
-     * wait time, skip execution.
-     */
-    WAIT_AND_SKIP
+  /**
+   * Wait for a configured duration to acquire the lock. If the lock cannot be acquired within the
+   * wait time, skip execution.
+   */
+  WAIT_AND_SKIP
 }

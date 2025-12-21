@@ -45,6 +45,9 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(LocksmithProperties.class)
 public class LocksmithAutoConfiguration {
 
+  /** Default constructor. */
+  public LocksmithAutoConfiguration() {}
+
   /**
    * Creates the distributed lock aspect bean.
    *

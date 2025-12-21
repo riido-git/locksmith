@@ -83,7 +83,16 @@ class DistributedLockAspectTest {
     @DistributedLock(key = "static-key")
     public void staticKeyMethod() {}
 
-    public record TestUser(String id) {
+    @DistributedLock(key = "#value")
+    public void processWithBlankValue(String value) {}
+
+    @DistributedLock(key = "#user.name")
+    public void processUserName(TestUser user) {}
+
+    public record TestUser(String id, String name) {
+      public TestUser(String id) {
+        this(id, null);
+      }
     }
   }
 
@@ -136,6 +145,56 @@ class DistributedLockAspectTest {
       aspect.handleDistributedLock(joinPoint);
 
       verify(lock).tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS));
+    }
+  }
+
+  @Nested
+  @DisplayName("InterruptedException Handling Tests")
+  class InterruptedExceptionTests {
+
+    @Test
+    @DisplayName("Should handle InterruptedException and return default with RETURN_DEFAULT")
+    void shouldHandleInterruptedExceptionWithReturnDefault() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(joinPoint, never()).proceed();
+      Thread.interrupted(); // Clear interrupt status for other tests
+    }
+
+    @Test
+    @DisplayName("Should handle InterruptedException and throw exception with THROW_EXCEPTION")
+    void shouldHandleInterruptedExceptionWithThrowException() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+
+      assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(joinPoint, never()).proceed();
+      Thread.interrupted(); // Clear interrupt status for other tests
+    }
+
+    @Test
+    @DisplayName("Should restore interrupt status after InterruptedException")
+    void shouldRestoreInterruptStatus() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+
+      aspect.handleDistributedLock(joinPoint);
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      Thread.interrupted(); // Clear interrupt status for other tests
     }
   }
 
@@ -263,7 +322,11 @@ class DistributedLockAspectTest {
     @DisplayName("Should use custom lease time from annotation")
     void shouldUseCustomLeaseTimeFromAnnotation() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "5m", "", SkipBehavior.THROW_EXCEPTION);
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "5m",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -285,6 +348,165 @@ class DistributedLockAspectTest {
       aspect.handleDistributedLock(joinPoint);
 
       verify(lock).tryLock(30, 600, TimeUnit.SECONDS);
+    }
+  }
+
+  @Nested
+  @DisplayName("Duration Parsing Tests")
+  class DurationParsingTests {
+
+    @Test
+    @DisplayName("Should parse ISO-8601 format for lease time (PT5M)")
+    void shouldParseIso8601FormatForLeaseTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "PT5M",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 300, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse ISO-8601 format for wait time (PT30S)")
+    void shouldParseIso8601FormatForWaitTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.WAIT_AND_SKIP,
+          "",
+          "PT30S",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(30, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(30, 600, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse simple format with seconds (45s)")
+    void shouldParseSimpleFormatWithSeconds() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "45s", SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(45, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(45, 600, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse simple format with minutes (2m)")
+    void shouldParseSimpleFormatWithMinutes() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "2m",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 120, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 120, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse simple format with hours (1h)")
+    void shouldParseSimpleFormatWithHours() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "1h",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 3600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 3600, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse ISO-8601 format with hours (PT1H)")
+    void shouldParseIso8601FormatWithHours() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "PT1H",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 3600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 3600, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should parse ISO-8601 combined format (PT1H30M)")
+    void shouldParseIso8601CombinedFormat() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "PT1H30M",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 5400, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 5400, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("Should use default when duration is empty string")
+    void shouldUseDefaultWhenDurationIsEmpty() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 600, TimeUnit.SECONDS); // 10 minutes default
+    }
+
+    @Test
+    @DisplayName("Should use default when duration is blank string")
+    void shouldUseDefaultWhenDurationIsBlank() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "   ",
+          "",
+          SkipBehavior.THROW_EXCEPTION);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 600, TimeUnit.SECONDS); // 10 minutes default
     }
   }
 
@@ -393,6 +615,118 @@ class DistributedLockAspectTest {
 
       assertNull(result);
     }
+
+    @Test
+    @DisplayName("Should return 0L for long primitive with RETURN_DEFAULT")
+    void shouldReturnZeroForLongPrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(long.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0L, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0.0d for double primitive with RETURN_DEFAULT")
+    void shouldReturnZeroForDoublePrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(double.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0.0d, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0.0f for float primitive with RETURN_DEFAULT")
+    void shouldReturnZeroForFloatPrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(float.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0.0f, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0 for byte primitive with RETURN_DEFAULT")
+    void shouldReturnZeroForBytePrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(byte.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals((byte) 0, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0 for short primitive with RETURN_DEFAULT")
+    void shouldReturnZeroForShortPrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(short.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals((short) 0, result);
+    }
+
+    @Test
+    @DisplayName("Should return null char for char primitive with RETURN_DEFAULT")
+    void shouldReturnNullCharForCharPrimitive() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(char.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals('\u0000', result);
+    }
+
+    @Test
+    @DisplayName("Should return null for Object return type with RETURN_DEFAULT")
+    void shouldReturnNullForObjectReturnType() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(String.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+    }
+
+    @Test
+    @DisplayName("Should return null for Boolean wrapper with RETURN_DEFAULT")
+    void shouldReturnNullForBooleanWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Boolean.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", SkipBehavior.RETURN_DEFAULT);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+    }
   }
 
   @Nested
@@ -406,8 +740,7 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when null")
       void shouldUseDefaultLeaseTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(null, Duration.ofSeconds(60), "lock:");
+        LocksmithProperties props = new LocksmithProperties(null, Duration.ofSeconds(60), "lock:");
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -474,8 +807,7 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default wait time when null")
       void shouldUseDefaultWaitTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), null, "lock:");
+        LocksmithProperties props = new LocksmithProperties(Duration.ofMinutes(10), null, "lock:");
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
       }
@@ -579,7 +911,8 @@ class DistributedLockAspectTest {
       @DisplayName("Should use custom key prefix without colon")
       void shouldUseCustomKeyPrefixWithoutColon() {
         LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "distributed-lock");
+            new LocksmithProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "distributed-lock");
 
         assertEquals("distributed-lock", props.keyPrefix());
       }
@@ -588,7 +921,8 @@ class DistributedLockAspectTest {
       @DisplayName("Should preserve key prefix with special characters")
       void shouldPreserveKeyPrefixWithSpecialCharacters() {
         LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "app:env:lock:");
+            new LocksmithProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "app:env:lock:");
 
         assertEquals("app:env:lock:", props.keyPrefix());
       }
@@ -762,6 +1096,76 @@ class DistributedLockAspectTest {
               IllegalArgumentException.class, () -> aspect.handleDistributedLock(joinPoint));
 
       assertTrue(thrown.getMessage().contains("evaluated to null"));
+    }
+
+    @Test
+    @DisplayName("Should throw exception when SpEL evaluates to blank string")
+    void shouldThrowExceptionWhenSpelEvaluatesToBlank() throws Throwable {
+      Method method = SpelTestClass.class.getMethod("processWithBlankValue", String.class);
+      when(methodSignature.getMethod()).thenReturn(method);
+      when(methodSignature.getDeclaringType()).thenReturn(SpelTestClass.class);
+      when(methodSignature.getName()).thenReturn("processWithBlankValue");
+      when(joinPoint.getArgs()).thenReturn(new Object[] {"   "});
+
+      IllegalArgumentException thrown =
+          assertThrows(
+              IllegalArgumentException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertTrue(thrown.getMessage().contains("evaluated to blank"));
+    }
+
+    @Test
+    @DisplayName("Should resolve SpEL expression with object property")
+    void shouldResolveSpelExpressionWithObjectProperty() throws Throwable {
+      Method method = SpelTestClass.class.getMethod("updateUser", SpelTestClass.TestUser.class);
+      when(methodSignature.getMethod()).thenReturn(method);
+      when(methodSignature.getDeclaringType()).thenReturn(SpelTestClass.class);
+      when(methodSignature.getName()).thenReturn("updateUser");
+      when(joinPoint.getArgs())
+          .thenReturn(new Object[] {new SpelTestClass.TestUser("user456", "John")});
+
+      when(redissonClient.getLock("lock:user456")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(redissonClient).getLock("lock:user456");
+    }
+
+    @Test
+    @DisplayName("Should throw exception when SpEL object property is null")
+    void shouldThrowExceptionWhenSpelObjectPropertyIsNull() throws Throwable {
+      Method method =
+          SpelTestClass.class.getMethod("processUserName", SpelTestClass.TestUser.class);
+      when(methodSignature.getMethod()).thenReturn(method);
+      when(methodSignature.getDeclaringType()).thenReturn(SpelTestClass.class);
+      when(methodSignature.getName()).thenReturn("processUserName");
+      when(joinPoint.getArgs()).thenReturn(new Object[] {new SpelTestClass.TestUser("user456")});
+
+      IllegalArgumentException thrown =
+          assertThrows(
+              IllegalArgumentException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertTrue(thrown.getMessage().contains("evaluated to null"));
+    }
+
+    @Test
+    @DisplayName("Should throw exception when SpEL evaluates to empty string")
+    void shouldThrowExceptionWhenSpelEvaluatesToEmpty() throws Throwable {
+      Method method = SpelTestClass.class.getMethod("processWithBlankValue", String.class);
+      when(methodSignature.getMethod()).thenReturn(method);
+      when(methodSignature.getDeclaringType()).thenReturn(SpelTestClass.class);
+      when(methodSignature.getName()).thenReturn("processWithBlankValue");
+      when(joinPoint.getArgs()).thenReturn(new Object[] {""});
+
+      IllegalArgumentException thrown =
+          assertThrows(
+              IllegalArgumentException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertTrue(thrown.getMessage().contains("evaluated to blank"));
     }
   }
 }
