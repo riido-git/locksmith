@@ -28,7 +28,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>1.0.0</version>
+    <version>1.2.1</version>
 </dependency>
 ```
 
@@ -136,6 +136,19 @@ Use `WAIT_AND_SKIP` mode to wait for the lock before giving up:
     key = "resource-lock",
     mode = LockAcquisitionMode.WAIT_AND_SKIP,
     waitTime = "30s"
+)
+public void accessResource() { }
+```
+
+### Custom Wait Time
+
+Override the default wait time per method:
+
+```java
+@DistributedLock(
+    key = "resource-lock",
+    mode = LockAcquisitionMode.WAIT_AND_SKIP,
+    waitTime = "2m"
 )
 public void accessResource() { }
 ```

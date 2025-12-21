@@ -2,6 +2,8 @@ package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import org.redisson.api.RedissonClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -45,6 +47,8 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(LocksmithProperties.class)
 public class LocksmithAutoConfiguration {
 
+  private static final Logger LOG = LoggerFactory.getLogger(LocksmithAutoConfiguration.class);
+
   /** Default constructor. */
   public LocksmithAutoConfiguration() {}
 
@@ -59,6 +63,7 @@ public class LocksmithAutoConfiguration {
   @ConditionalOnMissingBean
   public DistributedLockAspect distributedLockAspect(
       RedissonClient redissonClient, LocksmithProperties properties) {
+    LOG.info("Initializing locksmith with properties: {}", properties);
     return new DistributedLockAspect(redissonClient, properties);
   }
 }

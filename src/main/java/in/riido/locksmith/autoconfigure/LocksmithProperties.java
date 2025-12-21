@@ -1,6 +1,7 @@
 package in.riido.locksmith.autoconfigure;
 
 import java.time.Duration;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -60,5 +61,17 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
    */
   public static LocksmithProperties defaults() {
     return new LocksmithProperties(null, null, null);
+  }
+
+  @Override
+  @NonNull
+  public String toString() {
+    return "LocksmithProperties[leaseTime="
+        + leaseTime
+        + ", waitTime="
+        + waitTime
+        + ", keyPrefix='"
+        + keyPrefix
+        + "']";
   }
 }

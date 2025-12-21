@@ -220,9 +220,10 @@ public class DistributedLockAspect {
       String lockKey,
       String methodName) {
     try {
-      LockSkipHandler handler = annotation.skipHandler().getDeclaredConstructor().newInstance();
-      MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-      LockContext context =
+      final LockSkipHandler handler =
+          annotation.skipHandler().getDeclaredConstructor().newInstance();
+      final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+      final LockContext context =
           new LockContext(
               lockKey,
               methodName,

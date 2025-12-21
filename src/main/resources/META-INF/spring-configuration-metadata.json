@@ -1,0 +1,33 @@
+{
+  "groups": [
+    {
+      "name": "locksmith",
+      "type": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "description": "Configuration properties for Locksmith distributed locking."
+    }
+  ],
+  "properties": [
+    {
+      "name": "locksmith.lease-time",
+      "type": "java.time.Duration",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "description": "The default time after which the lock is automatically released. This prevents deadlocks if a server crashes while holding a lock. Supports duration strings like '10m', '30s', '1h' or ISO-8601 format like 'PT10M'.",
+      "defaultValue": "10m"
+    },
+    {
+      "name": "locksmith.wait-time",
+      "type": "java.time.Duration",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "description": "The default time to wait for acquiring a lock when using WAIT_AND_SKIP mode. If the lock cannot be acquired within this time, the method execution is skipped. Supports duration strings like '60s', '5m' or ISO-8601 format like 'PT1M'.",
+      "defaultValue": "60s"
+    },
+    {
+      "name": "locksmith.key-prefix",
+      "type": "java.lang.String",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "description": "The prefix to use for all lock keys in Redis. This helps namespace your locks and avoid conflicts with other applications sharing the same Redis instance.",
+      "defaultValue": "lock:"
+    }
+  ]
+}
