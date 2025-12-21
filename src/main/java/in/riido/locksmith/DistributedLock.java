@@ -13,12 +13,12 @@ import java.lang.annotation.Target;
  * Annotation to apply distributed locking on a method. Only one instance across all servers can
  * execute the annotated method at a time for the given lock key.
  *
- * <p>When the lock cannot be acquired, the behavior is controlled by {@link #onSkip()}:
+ * <p>When the lock cannot be acquired, the behavior is controlled by {@link #skipHandler()}:
  *
  * <ul>
- *   <li>{@link SkipBehavior#THROW_EXCEPTION} (default): Throws {@link LockNotAcquiredException}
- *   <li>{@link SkipBehavior#RETURN_DEFAULT}: Returns null for objects, default values for
- *       primitives
+ *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+ *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null for objects, default
+ *       values for primitives
  * </ul>
  *
  * <p>Usage examples:
@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
  * public void criticalTask() { }
  *
  * // For scheduled tasks - silently skip if lock not acquired
- * @DistributedLock(key = "scheduled-task", onSkip = SkipBehavior.RETURN_DEFAULT)
+ * @DistributedLock(key = "scheduled-task", skipHandler = ReturnDefaultHandler.class)
  * public void scheduledTask() { }
  *
  * // SpEL with method parameter - lock per user
@@ -124,16 +124,6 @@ public @interface DistributedLock {
    * @return wait time duration string, empty for default
    */
   String waitTime() default "";
-
-  /**
-   * Defines the behavior when the lock cannot be acquired and method execution is skipped.
-   *
-   * <p>This is ignored if {@link #skipHandler()} is set to a custom handler.
-   *
-   * @return the skip behavior, defaults to THROW_EXCEPTION
-   * @see #skipHandler()
-   */
-  SkipBehavior onSkip() default SkipBehavior.THROW_EXCEPTION;
 
   /**
    * Custom handler for lock acquisition failures.

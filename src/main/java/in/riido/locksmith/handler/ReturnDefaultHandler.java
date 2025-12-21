@@ -3,9 +3,6 @@ package in.riido.locksmith.handler;
 /**
  * A {@link LockSkipHandler} that returns default values when a lock cannot be acquired.
  *
- * <p>This handler provides the same behavior as {@link
- * in.riido.locksmith.SkipBehavior#RETURN_DEFAULT}:
- *
  * <ul>
  *   <li>Returns {@code null} for object types and {@code void}
  *   <li>Returns {@code false} for {@code boolean}

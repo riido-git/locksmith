@@ -9,7 +9,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 - Read/Write lock support for concurrent reads with exclusive writes
 - Lease timeout detection to catch methods exceeding lock duration
 - Custom skip handlers for advanced lock failure handling
-- Configurable lock acquisition modes and skip behaviors
+- Configurable lock acquisition modes and skip handlers
 - Auto-configuration for Spring Boot 4.x
 - Uses Redisson for reliable distributed locks
 
@@ -95,14 +95,14 @@ public class MyService {
 
 ### Scheduled Tasks
 
-For scheduled tasks, use `RETURN_DEFAULT` to silently skip if lock is held:
+For scheduled tasks, use `ReturnDefaultHandler` to silently skip if lock is held:
 
 ```java
 @Service
 public class SchedulerService {
 
     @Scheduled(cron = "0 0 3 * * ?")
-    @DistributedLock(key = "cleanup-job", onSkip = SkipBehavior.RETURN_DEFAULT)
+    @DistributedLock(key = "cleanup-job", skipHandler = ReturnDefaultHandler.class)
     public void dailyCleanup() {
         // Runs on only one instance
     }
@@ -253,10 +253,8 @@ The `LockContext` provides:
 - `returnType()` - The method's return type
 
 Built-in handlers:
-- `ThrowExceptionHandler` - Throws `LockNotAcquiredException`
+- `ThrowExceptionHandler` (default) - Throws `LockNotAcquiredException`
 - `ReturnDefaultHandler` - Returns null/default values
-
-When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
 
 ## Annotation Reference
 
@@ -269,8 +267,7 @@ When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
-| `onSkip` | SkipBehavior | `THROW_EXCEPTION` | Behavior when lock not acquired |
-| `skipHandler` | Class | `ThrowExceptionHandler` | Custom handler class (overrides onSkip) |
+| `skipHandler` | Class | `ThrowExceptionHandler` | Handler for lock acquisition failures |
 | `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
 ### `LockType`
@@ -288,13 +285,6 @@ When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
 | `SKIP_IMMEDIATELY` | Fail immediately if lock is held |
 | `WAIT_AND_SKIP` | Wait up to `waitTime` before failing |
 
-### `SkipBehavior`
-
-| Value | Description |
-|-------|-------------|
-| `THROW_EXCEPTION` | Throw `LockNotAcquiredException` |
-| `RETURN_DEFAULT` | Return null (objects) or default value (primitives) |
-
 ### `LeaseExpirationBehavior`
 
 | Value | Description |
@@ -305,7 +295,7 @@ When `skipHandler` is specified, it takes precedence over the `onSkip` enum.
 
 ## Exception Handling
 
-When using `THROW_EXCEPTION` (default), catch `LockNotAcquiredException`:
+When using `ThrowExceptionHandler` (default), catch `LockNotAcquiredException`:
 
 ```java
 try {
@@ -322,7 +312,7 @@ try {
 2. It resolves the lock key (evaluating SpEL if needed)
 3. Attempts to acquire a Redis lock via Redisson
 4. If acquired: executes the method, then releases the lock
-5. If not acquired: follows the configured `onSkip` behavior
+5. If not acquired: invokes the configured `skipHandler`
 
 The aspect runs with `Ordered.HIGHEST_PRECEDENCE` to ensure locks are acquired before transactions begin.
 

@@ -4,10 +4,7 @@ import in.riido.locksmith.exception.LockNotAcquiredException;
 
 /**
  * A {@link LockSkipHandler} that throws {@link LockNotAcquiredException} when a lock cannot be
- * acquired.
- *
- * <p>This handler provides the same behavior as {@link
- * in.riido.locksmith.SkipBehavior#THROW_EXCEPTION}.
+ * acquired. This is the default handler used by {@link in.riido.locksmith.DistributedLock}.
  *
  * @author Garvit Joshi
  * @since 1.3.0
