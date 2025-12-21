@@ -1643,6 +1643,27 @@ class DistributedLockAspectTest {
 
       assertEquals(0, result);
     }
+
+    @Test
+    @DisplayName("Should throw IllegalStateException when handler has no public no-arg constructor")
+    void shouldThrowIllegalStateExceptionWhenHandlerCannotBeInstantiated() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          PrivateConstructorHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      IllegalStateException exception =
+          assertThrows(IllegalStateException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      assertTrue(exception.getMessage().contains("Failed to instantiate skip handler"));
+      assertTrue(exception.getMessage().contains("PrivateConstructorHandler"));
+      assertTrue(exception.getMessage().contains("public no-argument constructor"));
+      assertInstanceOf(ReflectiveOperationException.class, exception.getCause());
+    }
   }
 
   /** Test handler that returns a specific fallback value. */
@@ -1660,6 +1681,18 @@ class DistributedLockAspectTest {
     @Override
     public Object handle(LockContext context) {
       capturedContext = context;
+      return null;
+    }
+  }
+
+  /** Test handler with private constructor to verify error handling. */
+  public static class PrivateConstructorHandler implements LockSkipHandler {
+    private PrivateConstructorHandler() {
+      // Private constructor - cannot be instantiated via reflection
+    }
+
+    @Override
+    public Object handle(LockContext context) {
       return null;
     }
   }
