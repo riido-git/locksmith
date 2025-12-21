@@ -129,4 +129,22 @@ public @interface DistributedLock {
    * @return the skip behavior, defaults to THROW_EXCEPTION
    */
   SkipBehavior onSkip() default SkipBehavior.THROW_EXCEPTION;
+
+  /**
+   * Defines the behavior when method execution time exceeds the configured lease duration.
+   *
+   * <p>When a method runs longer than its lock's lease time, the lock may expire while the method
+   * is still executing. This can lead to concurrent access by other instances. This parameter
+   * configures how to handle detection of such scenarios after method completion.
+   *
+   * <ul>
+   *   <li>{@link LeaseExpirationBehavior#LOG_WARNING} (default): Log a warning message
+   *   <li>{@link LeaseExpirationBehavior#THROW_EXCEPTION}: Throw {@link
+   *       in.riido.locksmith.exception.LeaseExpiredException}
+   *   <li>{@link LeaseExpirationBehavior#IGNORE}: Silently ignore
+   * </ul>
+   *
+   * @return the lease expiration behavior, defaults to LOG_WARNING
+   */
+  LeaseExpirationBehavior onLeaseExpired() default LeaseExpirationBehavior.LOG_WARNING;
 }
