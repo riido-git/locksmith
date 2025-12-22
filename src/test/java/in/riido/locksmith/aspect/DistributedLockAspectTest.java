@@ -737,8 +737,8 @@ class DistributedLockAspectTest {
     }
 
     @Test
-    @DisplayName("Should return null for Boolean wrapper with RETURN_DEFAULT")
-    void shouldReturnNullForBooleanWrapper() throws Throwable {
+    @DisplayName("Should return false for Boolean wrapper with RETURN_DEFAULT")
+    void shouldReturnFalseForBooleanWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Boolean.class);
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
@@ -747,7 +747,105 @@ class DistributedLockAspectTest {
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
-      assertNull(result);
+      assertEquals(false, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0 for Integer wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForIntegerWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Integer.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0L for Long wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForLongWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Long.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0L, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0.0d for Double wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForDoubleWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Double.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0.0d, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0.0f for Float wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForFloatWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Float.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals(0.0f, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0 for Byte wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForByteWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Byte.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals((byte) 0, result);
+    }
+
+    @Test
+    @DisplayName("Should return 0 for Short wrapper with RETURN_DEFAULT")
+    void shouldReturnZeroForShortWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Short.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals((short) 0, result);
+    }
+
+    @Test
+    @DisplayName("Should return null char for Character wrapper with RETURN_DEFAULT")
+    void shouldReturnNullCharForCharacterWrapper() throws Throwable {
+      when(methodSignature.getReturnType()).thenReturn(Character.class);
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals('\u0000', result);
     }
   }
 
