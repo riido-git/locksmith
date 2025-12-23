@@ -169,7 +169,48 @@ public @interface DistributedLock {
    *   <li>{@link LeaseExpirationBehavior#IGNORE}: Silently ignore
    * </ul>
    *
+   * <p><b>Note:</b> This setting has no effect when {@link #autoRenew()} is enabled, as the lock
+   * will be automatically renewed and never expire during method execution.
+   *
    * @return the lease expiration behavior, defaults to LOG_WARNING
    */
   LeaseExpirationBehavior onLeaseExpired() default LeaseExpirationBehavior.LOG_WARNING;
+
+  /**
+   * Enables automatic lease renewal using Redisson's watchdog mechanism.
+   *
+   * <p>When enabled, Redisson will automatically extend the lock's lease time approximately every
+   * 10 seconds (configurable via Redisson's lockWatchdogTimeout setting) as long as the method is
+   * executing and the thread is alive. The lock will be released when the method completes or the
+   * thread terminates.
+   *
+   * <p><b>Trade-offs:</b>
+   *
+   * <ul>
+   *   <li><b>Benefit:</b> Eliminates premature lock expiration for long-running operations
+   *   <li><b>Risk:</b> If the method hangs indefinitely, the lock will be held until the thread
+   *       dies or the application shuts down
+   * </ul>
+   *
+   * <p><b>Interaction with other settings:</b>
+   *
+   * <ul>
+   *   <li>When enabled, {@link #leaseTime()} is ignored (a warning is logged if specified)
+   *   <li>When enabled, {@link #onLeaseExpired()} has no effect (a warning is logged if not IGNORE)
+   * </ul>
+   *
+   * <p>Usage example:
+   *
+   * <pre>{@code
+   * @DistributedLock(key = "long-task", autoRenew = true)
+   * public void longRunningTask() {
+   *     // Lock automatically extends during execution
+   *     // Safe for tasks with unpredictable duration
+   * }
+   * }</pre>
+   *
+   * @return true to enable automatic lease renewal, false (default) to use fixed lease time
+   * @since 1.3.0
+   */
+  boolean autoRenew() default false;
 }

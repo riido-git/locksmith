@@ -87,12 +87,33 @@ public class DistributedLockAspect {
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = getLock(lockKey, distributedLock.type());
 
+    final boolean autoRenew = distributedLock.autoRenew();
+    final String methodName = formatMethodSignature(joinPoint);
+
+    // Log warnings for conflicting settings when autoRenew is enabled
+    if (autoRenew) {
+      if (!distributedLock.leaseTime().isBlank()) {
+        LOG.warn(
+            "autoRenew is enabled for [{}] but leaseTime is also specified. "
+                + "leaseTime will be ignored as Redisson's watchdog will manage lease renewal.",
+            methodName);
+      }
+      if (distributedLock.onLeaseExpired() != LeaseExpirationBehavior.IGNORE) {
+        LOG.warn(
+            "autoRenew is enabled for [{}] but onLeaseExpired is set to {}. "
+                + "This setting will have no effect as the lock will never expire during execution.",
+            methodName,
+            distributedLock.onLeaseExpired());
+      }
+    }
+
     final Duration leaseTime =
-        resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
+        autoRenew
+            ? Duration.ofMillis(-1)
+            : resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
     final Duration waitTime =
         resolveDuration(distributedLock.waitTime(), lockProperties.waitTime());
 
-    final String methodName = formatMethodSignature(joinPoint);
     boolean lockAcquired = false;
 
     try {
@@ -112,8 +133,11 @@ public class DistributedLockAspect {
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
 
-      checkLeaseExpiration(
-          distributedLock.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
+      // Skip lease expiration check when autoRenew is enabled
+      if (!autoRenew) {
+        checkLeaseExpiration(
+            distributedLock.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
+      }
 
       return result;
 
