@@ -90,6 +90,18 @@ class DistributedLockAspectTest {
       Class<? extends LockSkipHandler> skipHandler,
       LockType lockType,
       LeaseExpirationBehavior onLeaseExpired) {
+    setupAnnotation(key, mode, leaseTime, waitTime, skipHandler, lockType, onLeaseExpired, false);
+  }
+
+  private void setupAnnotation(
+      String key,
+      LockAcquisitionMode mode,
+      String leaseTime,
+      String waitTime,
+      Class<? extends LockSkipHandler> skipHandler,
+      LockType lockType,
+      LeaseExpirationBehavior onLeaseExpired,
+      boolean autoRenew) {
     DistributedLock annotation = mock(DistributedLock.class);
     when(annotation.key()).thenReturn(key);
     when(annotation.mode()).thenReturn(mode);
@@ -97,6 +109,7 @@ class DistributedLockAspectTest {
     when(annotation.waitTime()).thenReturn(waitTime);
     when(annotation.type()).thenReturn(lockType);
     when(annotation.onLeaseExpired()).thenReturn(onLeaseExpired);
+    when(annotation.autoRenew()).thenReturn(autoRenew);
     doReturn(skipHandler).when(annotation).skipHandler();
 
     Method mockMethod = mock(Method.class);
@@ -1847,6 +1860,275 @@ class DistributedLockAspectTest {
     @Override
     public Object handle(LockContext context) {
       return null;
+    }
+  }
+
+  @Nested
+  @DisplayName("Auto Renew Tests")
+  class AutoRenewTests {
+
+    @Test
+    @DisplayName("Should pass -1 as lease time when autoRenew is enabled")
+    void shouldPassNegativeOneAsLeaseTimeWhenAutoRenewEnabled() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(lock).tryLock(0, -1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should ignore leaseTime when autoRenew is enabled")
+    void shouldIgnoreLeaseTimeWhenAutoRenewEnabled() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "5m",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      // Verify that -1 is used instead of 300000 (5 minutes)
+      verify(lock).tryLock(0, -1, TimeUnit.MILLISECONDS);
+      verify(lock, never()).tryLock(0, 300000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should use configured waitTime when autoRenew is enabled")
+    void shouldUseConfiguredWaitTimeWhenAutoRenewEnabled() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.WAIT_AND_SKIP,
+          "",
+          "30s",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(30000, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(lock).tryLock(30000, -1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should skip lease expiration check when autoRenew is enabled")
+    void shouldSkipLeaseExpirationCheckWhenAutoRenewEnabled() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.THROW_EXCEPTION,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed())
+          .thenAnswer(
+              invocation -> {
+                Thread.sleep(10);
+                return "result";
+              });
+
+      // Should not throw LeaseExpiredException even with THROW_EXCEPTION behavior
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+    }
+
+    @Test
+    @DisplayName("Should acquire lock and execute method with autoRenew enabled")
+    void shouldAcquireLockAndExecuteMethodWithAutoRenew() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(joinPoint).proceed();
+      verify(lock).unlock();
+    }
+
+    @Test
+    @DisplayName("Should skip execution when lock not acquired with autoRenew enabled")
+    void shouldSkipExecutionWhenLockNotAcquiredWithAutoRenew() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ReturnDefaultHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(false);
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertNull(result);
+      verify(joinPoint, never()).proceed();
+    }
+
+    @Test
+    @DisplayName("Should release lock after execution with autoRenew enabled")
+    void shouldReleaseLockAfterExecutionWithAutoRenew() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).unlock();
+    }
+
+    @Test
+    @DisplayName("Should release lock when method throws exception with autoRenew enabled")
+    void shouldReleaseLockWhenMethodThrowsExceptionWithAutoRenew() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenThrow(new RuntimeException("Test exception"));
+
+      assertThrows(RuntimeException.class, () -> aspect.handleDistributedLock(joinPoint));
+
+      verify(lock).unlock();
+    }
+
+    @Test
+    @DisplayName("Should use normal lease time when autoRenew is disabled")
+    void shouldUseNormalLeaseTimeWhenAutoRenewDisabled() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "5m",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.REENTRANT,
+          LeaseExpirationBehavior.IGNORE,
+          false);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 300000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should work with read lock when autoRenew is enabled")
+    void shouldWorkWithReadLockWhenAutoRenewEnabled() throws Throwable {
+      RReadWriteLock readWriteLock = mock(RReadWriteLock.class);
+      RLock readLock = mock(RLock.class);
+      when(redissonClient.getReadWriteLock("lock:test-lock")).thenReturn(readWriteLock);
+      when(readWriteLock.readLock()).thenReturn(readLock);
+
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.READ,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(readLock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(readLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(readLock).tryLock(0, -1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should work with write lock when autoRenew is enabled")
+    void shouldWorkWithWriteLockWhenAutoRenewEnabled() throws Throwable {
+      RReadWriteLock readWriteLock = mock(RReadWriteLock.class);
+      RLock writeLock = mock(RLock.class);
+      when(redissonClient.getReadWriteLock("lock:test-lock")).thenReturn(readWriteLock);
+      when(readWriteLock.writeLock()).thenReturn(writeLock);
+
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "",
+          "",
+          ThrowExceptionHandler.class,
+          LockType.WRITE,
+          LeaseExpirationBehavior.IGNORE,
+          true);
+      when(writeLock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(writeLock.isHeldByCurrentThread()).thenReturn(true);
+      when(joinPoint.proceed()).thenReturn("result");
+
+      Object result = aspect.handleDistributedLock(joinPoint);
+
+      assertEquals("result", result);
+      verify(writeLock).tryLock(0, -1, TimeUnit.MILLISECONDS);
     }
   }
 }
