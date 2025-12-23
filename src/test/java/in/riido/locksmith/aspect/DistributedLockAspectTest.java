@@ -533,6 +533,56 @@ class DistributedLockAspectTest {
 
       verify(lock).tryLock(0, 600000, TimeUnit.MILLISECONDS); // 10 minutes default
     }
+
+    @Test
+    @DisplayName("Should preserve sub-second precision for leaseTime (500ms)")
+    void shouldPreserveSubSecondPrecisionForLeaseTime() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          "500ms",
+          "",
+          ThrowExceptionHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(0, 500, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(0, 500, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should preserve sub-second precision for waitTime (750ms)")
+    void shouldPreserveSubSecondPrecisionForWaitTime() throws Throwable {
+      setupAnnotation(
+          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "750ms", ThrowExceptionHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(750, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(750, 600000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should preserve sub-second precision for both leaseTime and waitTime")
+    void shouldPreserveSubSecondPrecisionForBothDurations() throws Throwable {
+      setupAnnotation(
+          "test-lock",
+          LockAcquisitionMode.WAIT_AND_SKIP,
+          "250ms",
+          "100ms",
+          ThrowExceptionHandler.class);
+      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
+      when(lock.tryLock(100, 250, TimeUnit.MILLISECONDS)).thenReturn(true);
+      when(lock.isHeldByCurrentThread()).thenReturn(true);
+
+      aspect.handleDistributedLock(joinPoint);
+
+      verify(lock).tryLock(100, 250, TimeUnit.MILLISECONDS);
+    }
   }
 
   @Nested
