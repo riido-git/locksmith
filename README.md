@@ -9,6 +9,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 - Simple `@DistributedLock` annotation for methods
 - Spring Expression Language (SpEL) support for dynamic lock keys
 - Read/Write lock support for concurrent reads with exclusive writes
+- Auto-renew lease time for long-running tasks using Redisson's watchdog
 - Lease timeout detection to catch methods exceeding lock duration
 - Custom skip handlers for advanced lock failure handling
 - Configurable lock acquisition modes and skip handlers
@@ -164,6 +165,26 @@ Override the default lease time per method:
 public void longRunningTask() { }
 ```
 
+### Auto-Renew for Long-Running Tasks
+
+For tasks with unpredictable duration, enable `autoRenew` to automatically extend the lock lease time using Redisson's watchdog mechanism:
+
+```java
+@DistributedLock(key = "long-task", autoRenew = true)
+public void longRunningTask() {
+    // Lock automatically extends during execution
+    // Safe for tasks with unpredictable duration
+}
+```
+
+When `autoRenew` is enabled:
+- Redisson automatically extends the lock every ~10 seconds (configurable via Redisson's `lockWatchdogTimeout`)
+- The lock is released when the method completes or the thread terminates
+- `leaseTime` is ignored (a warning is logged if specified)
+- `onLeaseExpired` has no effect (the lock never expires during execution)
+
+**Trade-off:** If the method hangs indefinitely, the lock will be held until the thread dies or the application shuts down.
+
 ### Read/Write Locks
 
 Use read/write locks when you need concurrent reads but exclusive writes:
@@ -282,6 +303,7 @@ Built-in handlers:
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
+| `autoRenew` | boolean | `false` | Enable automatic lease renewal via Redisson's watchdog |
 | `skipHandler` | Class | `ThrowExceptionHandler` | Handler for lock acquisition failures |
 | `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
