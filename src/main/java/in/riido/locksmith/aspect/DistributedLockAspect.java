@@ -194,11 +194,10 @@ public class DistributedLockAspect {
 
   private void releaseLock(RLock lock, String lockKey, String methodName) {
     try {
-      if (lock.isHeldByCurrentThread()) {
-        lock.unlock();
-        LOG.debug("Lock [{}] released for [{}]", lockKey, methodName);
-      }
+      lock.unlock();
+      LOG.debug("Lock [{}] released for [{}]", lockKey, methodName);
     } catch (IllegalMonitorStateException e) {
+      // Lock may have expired or been released due to virtual thread carrier thread changes
       LOG.warn(
           "Lock [{}] was already released (possibly expired) for [{}]: {}",
           lockKey,
