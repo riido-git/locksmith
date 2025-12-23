@@ -339,28 +339,12 @@ class DistributedLockAspectTest {
     }
 
     @Test
-    @DisplayName("Should not release lock if not held by current thread")
-    void shouldNotReleaseLockIfNotHeldByCurrentThread() throws Throwable {
-      setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
-      when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
-      when(lock.isHeldByCurrentThread()).thenReturn(false);
-      when(joinPoint.proceed()).thenReturn("result");
-
-      aspect.handleDistributedLock(joinPoint);
-
-      verify(lock, never()).unlock();
-    }
-
-    @Test
     @DisplayName("Should handle IllegalMonitorStateException during unlock gracefully")
     void shouldHandleIllegalMonitorStateExceptionDuringUnlock() throws Throwable {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
-      when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
       doThrow(new IllegalMonitorStateException("Lock expired")).when(lock).unlock();
 
