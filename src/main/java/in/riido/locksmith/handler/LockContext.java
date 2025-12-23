@@ -1,6 +1,7 @@
 package in.riido.locksmith.handler;
 
 import java.lang.reflect.Method;
+import java.util.Objects;
 
 /**
  * Provides contextual information about a lock acquisition attempt.
@@ -17,4 +18,14 @@ import java.lang.reflect.Method;
  * @since 1.2.0
  */
 public record LockContext(
-    String lockKey, String methodName, Method method, Object[] args, Class<?> returnType) {}
+    String lockKey, String methodName, Method method, Object[] args, Class<?> returnType) {
+
+  /** Compact constructor that validates all parameters are non-null. */
+  public LockContext {
+    Objects.requireNonNull(lockKey, "lockKey must not be null");
+    Objects.requireNonNull(methodName, "methodName must not be null");
+    Objects.requireNonNull(method, "method must not be null");
+    Objects.requireNonNull(args, "args must not be null");
+    Objects.requireNonNull(returnType, "returnType must not be null");
+  }
+}

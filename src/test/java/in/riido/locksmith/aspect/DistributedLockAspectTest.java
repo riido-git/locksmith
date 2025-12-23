@@ -51,6 +51,8 @@ class DistributedLockAspectTest {
     when(joinPoint.getSignature()).thenReturn(methodSignature);
     when(methodSignature.getDeclaringType()).thenReturn(TestClass.class);
     when(methodSignature.getName()).thenReturn("testMethod");
+    when(joinPoint.getArgs()).thenReturn(new Object[] {});
+    when(methodSignature.getReturnType()).thenReturn(void.class);
   }
 
   private void setupAnnotation(
