@@ -1,5 +1,7 @@
 # Locksmith
 
+[![Maven Central](https://img.shields.io/maven-central/v/in.riido/locksmith-spring-boot-starter)](https://central.sonatype.com/artifact/in.riido/locksmith-spring-boot-starter)
+
 A Spring Boot starter for Redis-based distributed locking using annotations. Ensures only one instance across all servers executes a method at a time.
 
 ## Features
@@ -22,7 +24,7 @@ A Spring Boot starter for Redis-based distributed locking using annotations. Ens
 
 ## Installation
 
-Add the dependency to your `pom.xml`:
+Add the dependency to your `pom.xml` (available on [Maven Central](https://central.sonatype.com/artifact/in.riido/locksmith-spring-boot-starter)):
 
 ```xml
 <dependency>
