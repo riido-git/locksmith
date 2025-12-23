@@ -201,11 +201,11 @@ public class DistributedLockAspect {
   private boolean tryAcquireLock(
       RLock lock, LockAcquisitionMode mode, Duration waitTime, Duration leaseTime)
       throws InterruptedException {
-    final long leaseTimeSeconds = leaseTime.toSeconds();
-    final long waitTimeSeconds = waitTime.toSeconds();
+    final long leaseTimeMs = leaseTime.toMillis();
+    final long waitTimeMs = waitTime.toMillis();
     return switch (mode) {
-      case SKIP_IMMEDIATELY -> lock.tryLock(0, leaseTimeSeconds, TimeUnit.SECONDS);
-      case WAIT_AND_SKIP -> lock.tryLock(waitTimeSeconds, leaseTimeSeconds, TimeUnit.SECONDS);
+      case SKIP_IMMEDIATELY -> lock.tryLock(0, leaseTimeMs, TimeUnit.MILLISECONDS);
+      case WAIT_AND_SKIP -> lock.tryLock(waitTimeMs, leaseTimeMs, TimeUnit.MILLISECONDS);
     };
   }
 
