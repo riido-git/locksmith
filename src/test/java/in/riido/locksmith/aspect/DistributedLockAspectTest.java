@@ -144,7 +144,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -162,7 +162,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -177,12 +177,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+      when(lock.tryLock(eq(0L), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(eq(0L), anyLong(), eq(TimeUnit.SECONDS));
+      verify(lock).tryLock(eq(0L), anyLong(), eq(TimeUnit.MILLISECONDS));
     }
   }
 
@@ -196,7 +196,8 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+      when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
+          .thenThrow(new InterruptedException());
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -212,7 +213,8 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+      when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
+          .thenThrow(new InterruptedException());
 
       assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
 
@@ -227,7 +229,8 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+      when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
+          .thenThrow(new InterruptedException());
 
       aspect.handleDistributedLock(joinPoint);
 
@@ -246,7 +249,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -263,7 +266,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(60, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -277,12 +280,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(eq(60L), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(true);
+      when(lock.tryLock(eq(60000L), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(eq(60L), anyLong(), eq(TimeUnit.SECONDS));
+      verify(lock).tryLock(eq(60000L), anyLong(), eq(TimeUnit.MILLISECONDS));
     }
   }
 
@@ -296,7 +299,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -311,7 +314,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenThrow(new RuntimeException("Test exception"));
 
@@ -326,7 +329,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(false);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -341,7 +344,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
       doThrow(new IllegalMonitorStateException("Lock expired")).when(lock).unlock();
@@ -362,12 +365,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "5m", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 300, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 300000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -376,12 +379,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "30s", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(30, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(30000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(30, 600, TimeUnit.SECONDS);
+      verify(lock).tryLock(30000, 600000, TimeUnit.MILLISECONDS);
     }
   }
 
@@ -399,12 +402,12 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 300, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 300000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -413,12 +416,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "PT30S", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(30, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(30000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(30, 600, TimeUnit.SECONDS);
+      verify(lock).tryLock(30000, 600000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -427,12 +430,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "45s", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(45, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(45000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(45, 600, TimeUnit.SECONDS);
+      verify(lock).tryLock(45000, 600000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -441,12 +444,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "2m", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 120, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 120000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 120, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 120000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -455,12 +458,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "1h", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 3600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 3600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 3600, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 3600000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -473,12 +476,12 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 3600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 3600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 3600, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 3600000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -491,12 +494,12 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 5400, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 5400000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 5400, TimeUnit.SECONDS);
+      verify(lock).tryLock(0, 5400000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -505,12 +508,12 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 600, TimeUnit.SECONDS); // 10 minutes default
+      verify(lock).tryLock(0, 600000, TimeUnit.MILLISECONDS); // 10 minutes default
     }
 
     @Test
@@ -523,12 +526,12 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(lock).tryLock(0, 600, TimeUnit.SECONDS); // 10 minutes default
+      verify(lock).tryLock(0, 600000, TimeUnit.MILLISECONDS); // 10 minutes default
     }
   }
 
@@ -542,7 +545,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "my-task", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:my-task")).thenReturn(lock);
-      when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+      when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(false);
 
       aspect.handleDistributedLock(joinPoint);
 
@@ -586,7 +589,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       LockNotAcquiredException thrown =
           assertThrows(
@@ -603,7 +606,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -617,7 +620,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -631,7 +634,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -645,7 +648,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -659,7 +662,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -673,7 +676,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -687,7 +690,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -701,7 +704,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -715,7 +718,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -729,7 +732,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -743,7 +746,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -757,7 +760,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -771,7 +774,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -785,7 +788,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -799,7 +802,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -813,7 +816,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -827,7 +830,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -841,7 +844,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1152,7 +1155,7 @@ class DistributedLockAspectTest {
       when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
 
       when(redissonClient.getLock("lock:user123")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1172,7 +1175,7 @@ class DistributedLockAspectTest {
       when(joinPoint.getArgs()).thenReturn(new Object[] {42L});
 
       when(redissonClient.getLock("lock:user-42")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1192,7 +1195,7 @@ class DistributedLockAspectTest {
       when(joinPoint.getArgs()).thenReturn(new Object[] {});
 
       when(redissonClient.getLock("lock:static-key")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1245,7 +1248,7 @@ class DistributedLockAspectTest {
           .thenReturn(new Object[] {new SpelTestClass.TestUser("user456", "John")});
 
       when(redissonClient.getLock("lock:user456")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1318,7 +1321,7 @@ class DistributedLockAspectTest {
           ThrowExceptionHandler.class,
           LockType.REENTRANT);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1339,7 +1342,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.READ);
-      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1362,7 +1365,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.WRITE);
-      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1385,7 +1388,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.READ);
-      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1404,7 +1407,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.WRITE);
-      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1423,7 +1426,7 @@ class DistributedLockAspectTest {
           "",
           ReturnDefaultHandler.class,
           LockType.READ);
-      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1441,7 +1444,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.WRITE);
-      when(writeLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
     }
@@ -1456,13 +1459,13 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.READ);
-      when(readLock.tryLock(0, 300, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(readLock).tryLock(0, 300, TimeUnit.SECONDS);
+      verify(readLock).tryLock(0, 300000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -1475,13 +1478,13 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.WRITE);
-      when(writeLock.tryLock(60, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(writeLock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
       aspect.handleDistributedLock(joinPoint);
 
-      verify(writeLock).tryLock(60, 600, TimeUnit.SECONDS);
+      verify(writeLock).tryLock(60000, 600000, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -1494,7 +1497,7 @@ class DistributedLockAspectTest {
           "",
           ThrowExceptionHandler.class,
           LockType.READ);
-      when(readLock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenThrow(new RuntimeException("Test exception"));
 
@@ -1520,7 +1523,7 @@ class DistributedLockAspectTest {
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
 
@@ -1542,7 +1545,7 @@ class DistributedLockAspectTest {
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 1, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed())
           .thenAnswer(
@@ -1572,7 +1575,7 @@ class DistributedLockAspectTest {
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 1, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed())
           .thenAnswer(
@@ -1598,7 +1601,7 @@ class DistributedLockAspectTest {
           LockType.REENTRANT,
           LeaseExpirationBehavior.LOG_WARNING);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 1, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed())
           .thenAnswer(
@@ -1625,7 +1628,7 @@ class DistributedLockAspectTest {
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 0, TimeUnit.SECONDS)).thenReturn(true);
+      when(lock.tryLock(0, 1, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
       when(joinPoint.proceed())
           .thenAnswer(
@@ -1666,7 +1669,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       assertThrows(LockNotAcquiredException.class, () -> aspect.handleDistributedLock(joinPoint));
     }
@@ -1677,7 +1680,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1690,7 +1693,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", FallbackValueHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1703,7 +1706,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ContextCapturingHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
       when(joinPoint.getArgs()).thenReturn(new Object[] {"arg1", 42});
 
       aspect.handleDistributedLock(joinPoint);
@@ -1721,7 +1724,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1735,7 +1738,7 @@ class DistributedLockAspectTest {
       setupAnnotation(
           "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       Object result = aspect.handleDistributedLock(joinPoint);
 
@@ -1752,7 +1755,7 @@ class DistributedLockAspectTest {
           "",
           PrivateConstructorHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
-      when(lock.tryLock(0, 600, TimeUnit.SECONDS)).thenReturn(false);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
       IllegalStateException exception =
           assertThrows(IllegalStateException.class, () -> aspect.handleDistributedLock(joinPoint));
