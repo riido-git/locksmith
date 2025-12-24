@@ -498,8 +498,9 @@ class ConcurrentAccessTest {
       }
 
       assertTrue(allComplete.await(15, TimeUnit.SECONDS));
-      assertTrue(
-          maxConcurrentExecutions.get() > 1,
+      assertEquals(
+          5,
+          maxConcurrentExecutions.get(),
           "Should have had concurrent executions with different keys");
 
       executor.shutdown();
