@@ -25,11 +25,6 @@ public class DockerAvailableCondition implements ExecutionCondition {
   }
 
   private boolean isDockerAvailable() {
-    try {
-      DockerClientFactory.instance().client();
-      return true;
-    } catch (Exception e) {
-      return false;
-    }
+    return DockerClientFactory.instance().isDockerAvailable();
   }
 }
