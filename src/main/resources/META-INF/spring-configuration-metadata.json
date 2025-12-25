@@ -28,6 +28,13 @@
       "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
       "description": "The prefix to use for all lock keys in Redis. This helps namespace your locks and avoid conflicts with other applications sharing the same Redis instance.",
       "defaultValue": "lock:"
+    },
+    {
+      "name": "locksmith.debug",
+      "type": "java.lang.Boolean",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "description": "When enabled, logs detailed information about lock operations including key resolution, lock type, timing, and acquisition status.",
+      "defaultValue": false
     }
   ]
 }
