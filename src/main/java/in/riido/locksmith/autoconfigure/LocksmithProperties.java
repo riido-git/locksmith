@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * locksmith.lease-time=10m
  * locksmith.wait-time=60s
  * locksmith.key-prefix=lock:
+ * locksmith.debug=true
  * }</pre>
  *
  * @param leaseTime The default time after which the lock is automatically released. This prevents
@@ -20,11 +21,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param waitTime The default time to wait for acquiring a lock when using WAIT_AND_SKIP mode.
  *     Default: 60 seconds.
  * @param keyPrefix The prefix to use for all lock keys in Redis. Default: "lock:".
+ * @param debug When enabled, logs detailed information about lock operations including key
+ *     resolution, lock type, timing, and acquisition status. Default: false.
  * @author Garvit Joshi
  * @since 1.0.0
  */
 @ConfigurationProperties(prefix = "locksmith")
-public record LocksmithProperties(Duration leaseTime, Duration waitTime, String keyPrefix) {
+public record LocksmithProperties(
+    Duration leaseTime, Duration waitTime, String keyPrefix, Boolean debug) {
 
   /** Default lease time. */
   public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(10);
@@ -35,12 +39,16 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
   /** Default key prefix. */
   public static final String DEFAULT_KEY_PREFIX = "lock:";
 
+  /** Default debug mode. */
+  public static final Boolean DEFAULT_DEBUG = Boolean.FALSE;
+
   /**
    * Compact constructor that applies default values for null or invalid inputs.
    *
    * @param leaseTime the lease time, or null to use default
    * @param waitTime the wait time, or null to use default
    * @param keyPrefix the key prefix, or null to use default
+   * @param debug the debug mode, or null to use default
    */
   public LocksmithProperties {
     if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
@@ -52,6 +60,9 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
     if (keyPrefix == null || keyPrefix.isBlank()) {
       keyPrefix = DEFAULT_KEY_PREFIX;
     }
+    if (debug == null) {
+      debug = DEFAULT_DEBUG;
+    }
   }
 
   /**
@@ -60,7 +71,7 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
    * @return a new LocksmithProperties with default configuration
    */
   public static LocksmithProperties defaults() {
-    return new LocksmithProperties(null, null, null);
+    return new LocksmithProperties(null, null, null, null);
   }
 
   @Override
@@ -72,6 +83,8 @@ public record LocksmithProperties(Duration leaseTime, Duration waitTime, String 
         + waitTime
         + ", keyPrefix='"
         + keyPrefix
-        + "']";
+        + "', debug="
+        + debug
+        + "]";
   }
 }

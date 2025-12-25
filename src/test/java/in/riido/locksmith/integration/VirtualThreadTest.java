@@ -2,12 +2,10 @@ package in.riido.locksmith.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
-import in.riido.locksmith.LockType;
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.integration.service.VirtualThreadTestService;
+import in.riido.locksmith.integration.service.VirtualThreadTestServiceImpl;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -84,7 +82,7 @@ class VirtualThreadTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:");
+        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     AspectJProxyFactory factory = new AspectJProxyFactory(new VirtualThreadTestServiceImpl());
@@ -475,176 +473,6 @@ class VirtualThreadTest {
           String.format("%.2f", throughput));
 
       assertEquals(taskCount, completedCount.get(), "All tasks should complete");
-    }
-  }
-
-  public interface VirtualThreadTestService {
-    void exclusiveLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution);
-
-    boolean tryAcquireLock();
-
-    boolean contentionTestMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution);
-
-    void readOperation(AtomicInteger currentReaders, AtomicInteger maxConcurrentReaders);
-
-    void longReadOperation(AtomicBoolean readerActive, CountDownLatch started);
-
-    boolean tryWriteOperation();
-
-    void isolatedLockMethod(
-        String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions);
-
-    void waitAndExecuteMethod(int index, List<Integer> order);
-
-    void waitForLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution);
-
-    void performanceTestMethod(String key);
-  }
-
-  public static class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
-
-    @Override
-    @DistributedLock(
-        key = "vt-exclusive-lock",
-        mode = LockAcquisitionMode.WAIT_AND_SKIP,
-        waitTime = "30s")
-    public void exclusiveLockMethod(
-        AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
-      int current = activeThreads.incrementAndGet();
-      if (current > 1) {
-        concurrentExecution.set(true);
-      }
-      try {
-        Thread.sleep(10);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      activeThreads.decrementAndGet();
-    }
-
-    @Override
-    @DistributedLock(key = "vt-try-lock", skipHandler = ReturnDefaultHandler.class)
-    public boolean tryAcquireLock() {
-      try {
-        Thread.sleep(5);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      return true;
-    }
-
-    @Override
-    @DistributedLock(key = "vt-contention-lock", skipHandler = ReturnDefaultHandler.class)
-    public boolean contentionTestMethod(
-        AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
-      int current = activeThreads.incrementAndGet();
-      if (current > 1) {
-        concurrentExecution.set(true);
-      }
-      try {
-        Thread.sleep(20);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      activeThreads.decrementAndGet();
-      return true;
-    }
-
-    @Override
-    @DistributedLock(
-        key = "vt-rw-concurrent",
-        type = LockType.READ,
-        skipHandler = ReturnDefaultHandler.class)
-    public void readOperation(AtomicInteger currentReaders, AtomicInteger maxConcurrentReaders) {
-      int current = currentReaders.incrementAndGet();
-      maxConcurrentReaders.updateAndGet(max -> Math.max(max, current));
-      try {
-        Thread.sleep(100);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      currentReaders.decrementAndGet();
-    }
-
-    @Override
-    @DistributedLock(
-        key = "vt-rw-block-test",
-        type = LockType.READ,
-        skipHandler = ReturnDefaultHandler.class)
-    public void longReadOperation(AtomicBoolean readerActive, CountDownLatch started) {
-      readerActive.set(true);
-      started.countDown();
-      try {
-        Thread.sleep(1000);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      readerActive.set(false);
-    }
-
-    @Override
-    @DistributedLock(
-        key = "vt-rw-block-test",
-        type = LockType.WRITE,
-        skipHandler = ReturnDefaultHandler.class)
-    public boolean tryWriteOperation() {
-      return true;
-    }
-
-    @Override
-    @DistributedLock(key = "#key", skipHandler = ReturnDefaultHandler.class)
-    public void isolatedLockMethod(
-        String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions) {
-      int current = concurrentExecutions.incrementAndGet();
-      maxConcurrentExecutions.updateAndGet(max -> Math.max(max, current));
-      try {
-        Thread.sleep(100);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      concurrentExecutions.decrementAndGet();
-    }
-
-    @Override
-    @DistributedLock(
-        key = "vt-order-lock",
-        mode = LockAcquisitionMode.WAIT_AND_SKIP,
-        waitTime = "30s")
-    public void waitAndExecuteMethod(int index, List<Integer> order) {
-      order.add(index);
-      try {
-        Thread.sleep(10);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    }
-
-    @Override
-    @DistributedLock(
-        key = "vt-wait-lock",
-        mode = LockAcquisitionMode.WAIT_AND_SKIP,
-        waitTime = "60s")
-    public void waitForLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
-      int current = activeThreads.incrementAndGet();
-      if (current > 1) {
-        concurrentExecution.set(true);
-      }
-      try {
-        Thread.sleep(5);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-      activeThreads.decrementAndGet();
-    }
-
-    @Override
-    @DistributedLock(key = "#key", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
-    public void performanceTestMethod(String key) {
-      try {
-        Thread.sleep(5);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
     }
   }
 }

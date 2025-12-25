@@ -2,11 +2,10 @@ package in.riido.locksmith.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.integration.service.StressTestService;
+import in.riido.locksmith.integration.service.StressTestServiceImpl;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,7 +58,7 @@ class StressPerformanceTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "stress:");
+        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "stress:", false);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations
@@ -396,81 +395,6 @@ class StressPerformanceTest {
           minThroughput >= avgThroughput * 0.7, "Throughput should not degrade by more than 30%");
 
       executor.shutdown();
-    }
-  }
-
-  public interface StressTestService {
-    boolean highVolumeMethod();
-
-    void multiKeyMethod(String key);
-
-    void latencyMeasureMethod();
-
-    void throughputMethod();
-
-    void resourceLeakTestMethod();
-
-    void exceptionThrowingMethod();
-
-    boolean lockAfterExceptionMethod();
-
-    void sustainedLoadMethod();
-  }
-
-  public static class StressTestServiceImpl implements StressTestService {
-
-    @Override
-    @DistributedLock(key = "high-volume", skipHandler = ReturnDefaultHandler.class)
-    public boolean highVolumeMethod() {
-      return true;
-    }
-
-    @Override
-    @DistributedLock(key = "#key", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
-    public void multiKeyMethod(String key) {
-      // Minimal work
-    }
-
-    @Override
-    @DistributedLock(key = "latency-test")
-    public void latencyMeasureMethod() {
-      // Minimal work to measure lock overhead
-    }
-
-    @Override
-    @DistributedLock(
-        key = "throughput-test",
-        mode = LockAcquisitionMode.WAIT_AND_SKIP,
-        waitTime = "10s")
-    public void throughputMethod() {
-      // Minimal work
-    }
-
-    @Override
-    @DistributedLock(key = "resource-leak-test")
-    public void resourceLeakTestMethod() {
-      // Minimal work
-    }
-
-    @Override
-    @DistributedLock(key = "exception-test")
-    public void exceptionThrowingMethod() {
-      throw new RuntimeException("Test exception");
-    }
-
-    @Override
-    @DistributedLock(key = "exception-test", skipHandler = ReturnDefaultHandler.class)
-    public boolean lockAfterExceptionMethod() {
-      return true;
-    }
-
-    @Override
-    @DistributedLock(
-        key = "sustained-load",
-        mode = LockAcquisitionMode.WAIT_AND_SKIP,
-        waitTime = "5s")
-    public void sustainedLoadMethod() {
-      // Minimal work
     }
   }
 }

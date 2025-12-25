@@ -74,6 +74,8 @@ public class DistributedLockAspect {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedLock distributedLock =
         signature.getMethod().getAnnotation(DistributedLock.class);
+    final boolean debugMode = Boolean.TRUE.equals(lockProperties.debug());
+    final String methodName = formatMethodSignature(joinPoint);
 
     if (distributedLock.key().isBlank()) {
       throw new IllegalArgumentException(
@@ -86,9 +88,7 @@ public class DistributedLockAspect {
     final String resolvedKey = resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = getLock(lockKey, distributedLock.type());
-
     final boolean autoRenew = distributedLock.autoRenew();
-    final String methodName = formatMethodSignature(joinPoint);
 
     // Log warnings for conflicting settings when autoRenew is enabled
     if (autoRenew) {
@@ -114,24 +114,53 @@ public class DistributedLockAspect {
     final Duration waitTime =
         resolveDuration(distributedLock.waitTime(), lockProperties.waitTime());
 
+    if (debugMode) {
+      LOG.info(
+          "Acquiring lock [{}] for [{}] - type={}, mode={}, leaseTime={}, waitTime={}, autoRenew={}",
+          lockKey,
+          methodName,
+          distributedLock.type(),
+          distributedLock.mode(),
+          leaseTime,
+          waitTime,
+          autoRenew);
+    }
+
     boolean lockAcquired = false;
 
     try {
       lockAcquired = tryAcquireLock(lock, distributedLock.mode(), waitTime, leaseTime);
 
       if (!lockAcquired) {
-        LOG.info(
-            "Skipping execution of [{}] - lock [{}] is held by another instance",
-            methodName,
-            lockKey);
+        if (debugMode) {
+          LOG.info(
+              "Lock acquisition failed for [{}] in [{}], invoking skip handler: {}",
+              lockKey,
+              methodName,
+              distributedLock.skipHandler().getSimpleName());
+        } else {
+          LOG.info(
+              "Skipping execution of [{}] - lock [{}] is held by another instance",
+              methodName,
+              lockKey);
+        }
         return handleSkip(distributedLock, joinPoint, lockKey, methodName);
       }
 
-      LOG.debug("Lock [{}] acquired for [{}]", lockKey, methodName);
+      LOG.info("Lock [{}] acquired for [{}]", lockKey, methodName);
 
       final long startTime = System.currentTimeMillis();
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
+
+      if (debugMode) {
+        LOG.info(
+            "Method [{}] executed in {}ms, returnType={}, hasResult={}",
+            methodName,
+            executionTime,
+            signature.getReturnType().getSimpleName(),
+            result != null);
+      }
 
       // Skip lease expiration check when autoRenew is enabled
       if (!autoRenew) {
@@ -195,7 +224,7 @@ public class DistributedLockAspect {
   private void releaseLock(RLock lock, String lockKey, String methodName) {
     try {
       lock.unlock();
-      LOG.debug("Lock [{}] released for [{}]", lockKey, methodName);
+      LOG.info("Lock [{}] released for [{}]", lockKey, methodName);
     } catch (IllegalMonitorStateException e) {
       // Lock may have expired or been released due to virtual thread carrier thread changes
       LOG.warn(
