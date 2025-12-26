@@ -10,6 +10,8 @@ import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -47,6 +49,8 @@ public class DistributedLockAspect {
   private static final ExpressionParser EXPRESSION_PARSER = new SpelExpressionParser();
   private static final ParameterNameDiscoverer PARAMETER_NAME_DISCOVERER =
       new DefaultParameterNameDiscoverer();
+  private static final Map<Class<? extends LockSkipHandler>, LockSkipHandler> HANDLER_CACHE =
+      new ConcurrentHashMap<>();
 
   private final RedissonClient redissonClient;
   private final LocksmithProperties lockProperties;
@@ -266,30 +270,51 @@ public class DistributedLockAspect {
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
 
+  /**
+   * Gets a cached instance of the specified handler class, creating it if necessary.
+   *
+   * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
+   * reflection-based instantiation on every lock skip. Handler instances are cached per class type
+   * and reused across all invocations.
+   *
+   * <p><b>Important:</b> Handler classes must be stateless and thread-safe, as a single instance
+   * will be shared across all concurrent invocations.
+   *
+   * @param handlerClass the handler class to instantiate
+   * @return a cached or newly created instance of the handler
+   * @throws IllegalStateException if the handler cannot be instantiated
+   */
+  private LockSkipHandler getHandlerInstance(Class<? extends LockSkipHandler> handlerClass) {
+    return HANDLER_CACHE.computeIfAbsent(
+        handlerClass,
+        clazz -> {
+          try {
+            return clazz.getDeclaredConstructor().newInstance();
+          } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(
+                "Failed to instantiate skip handler: "
+                    + clazz.getName()
+                    + ". Ensure it has a public no-argument constructor.",
+                e);
+          }
+        });
+  }
+
   private Object handleSkip(
       DistributedLock annotation,
       ProceedingJoinPoint joinPoint,
       String lockKey,
       String methodName) {
-    try {
-      final LockSkipHandler handler =
-          annotation.skipHandler().getDeclaredConstructor().newInstance();
-      final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-      final LockContext context =
-          new LockContext(
-              lockKey,
-              methodName,
-              signature.getMethod(),
-              joinPoint.getArgs(),
-              signature.getReturnType());
-      return handler.handle(context);
-    } catch (ReflectiveOperationException e) {
-      throw new IllegalStateException(
-          "Failed to instantiate skip handler: "
-              + annotation.skipHandler().getName()
-              + ". Ensure it has a public no-argument constructor.",
-          e);
-    }
+    final LockSkipHandler handler = getHandlerInstance(annotation.skipHandler());
+    final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+    final LockContext context =
+        new LockContext(
+            lockKey,
+            methodName,
+            signature.getMethod(),
+            joinPoint.getArgs(),
+            signature.getReturnType());
+    return handler.handle(context);
   }
 
   /**

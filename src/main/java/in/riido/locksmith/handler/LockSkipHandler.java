@@ -15,6 +15,11 @@ package in.riido.locksmith.handler;
  *
  * <p>Implementations must have a public no-argument constructor to be instantiated by the aspect.
  *
+ * <p><b>Thread-Safety Requirement:</b> Implementations must be stateless and thread-safe. Handler
+ * instances are cached and reused across all lock acquisition failures. The same handler instance
+ * may be invoked concurrently by multiple threads. Do not use instance variables to store state
+ * between invocations.
+ *
  * <p>Example implementation:
  *
  * <pre>{@code
@@ -46,6 +51,9 @@ public interface LockSkipHandler {
    *
    * <p>This method is called when lock acquisition fails and the method execution is skipped. The
    * returned value will be used as the method's return value.
+   *
+   * <p><b>Important:</b> This method must be thread-safe as it may be called concurrently by
+   * multiple threads on the same handler instance.
    *
    * @param context the lock context containing information about the failed acquisition
    * @return the value to return from the method, must be compatible with the method's return type
