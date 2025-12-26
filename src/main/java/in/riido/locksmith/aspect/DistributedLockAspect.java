@@ -50,7 +50,7 @@ public class DistributedLockAspect {
   private static final ParameterNameDiscoverer PARAMETER_NAME_DISCOVERER =
       new DefaultParameterNameDiscoverer();
   private static final Map<Class<? extends LockSkipHandler>, LockSkipHandler> HANDLER_CACHE =
-      new ConcurrentHashMap<>();
+      new ConcurrentHashMap<>(5);
 
   private final RedissonClient redissonClient;
   private final LocksmithProperties lockProperties;
