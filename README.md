@@ -114,21 +114,54 @@ public class SchedulerService {
 
 ### Dynamic Keys with SpEL
 
-Use Spring Expression Language for dynamic lock keys:
+Use Spring Expression Language (SpEL) for dynamic lock keys. SpEL expressions must be wrapped in `#{...}` syntax:
 
 ```java
 // Lock per user ID
-@DistributedLock(key = "#userId")
+@DistributedLock(key = "#{#userId}")
 public void processUser(String userId) { }
 
 // Lock using object property
-@DistributedLock(key = "#order.id")
+@DistributedLock(key = "#{#order.id}")
 public void processOrder(Order order) { }
 
 // Lock with concatenation
-@DistributedLock(key = "'user-' + #userId")
+@DistributedLock(key = "#{'user-' + #userId}")
 public void updateUser(Long userId) { }
+
+// Lock using parameter by position
+@DistributedLock(key = "#{#p0}")  // or #{#a0}
+public void processFirst(String firstArg) { }
+
+// Lock with conditional expression
+@DistributedLock(key = "#{#amount > 1000 ? 'large' : 'small'}")
+public void processPayment(double amount) { }
+
+// Lock using method call
+@DistributedLock(key = "#{#user.getId()}")
+public void processUser(User user) { }
+
+// Lock using static method
+@DistributedLock(key = "#{T(java.lang.String).valueOf(#orderId)}")
+public void processOrder(Long orderId) { }
 ```
+
+**Important Notes:**
+- **SpEL expressions require `#{...}` wrapper** - Without it, the key is treated as a literal string
+- **Literal keys can contain `#`** - Keys like `order#123` or `task#1` work as literals (no SpEL evaluation)
+- **Parameter names** - Access method parameters using `#paramName`, `#p0`, or `#a0`
+- **Object properties** - Access nested properties with `#object.property` or `#object.method()`
+- **Operators** - Use SpEL operators: `+`, `-`, `*`, `/`, `>`, `<`, `==`, `? :`, etc.
+
+**Examples:**
+
+| Key Expression | Type | Resolves To |
+|---------------|------|-------------|
+| `"#{#userId}"` | SpEL | Value of `userId` parameter |
+| `"#userId"` | Literal | String `"#userId"` (not evaluated) |
+| `"order#123"` | Literal | String `"order#123"` |
+| `"#{'user-' + #id}"` | SpEL | Concatenated string like `"user-42"` |
+| `"#{#user.name}"` | SpEL | Value of `user.name` property |
 
 ### Wait for Lock
 
@@ -298,7 +331,7 @@ Built-in handlers:
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `key` | String | (required) | Lock key, supports SpEL |
+| `key` | String | (required) | Lock key - literal string or SpEL expression wrapped in `#{...}` |
 | `type` | LockType | `REENTRANT` | Type of lock (REENTRANT, READ, WRITE) |
 | `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
@@ -346,12 +379,16 @@ try {
 ## How It Works
 
 1. When a method with `@DistributedLock` is called, the aspect intercepts it
-2. It resolves the lock key (evaluating SpEL if needed)
+2. It resolves the lock key:
+   - If key is wrapped in `#{...}`, evaluates it as a SpEL expression
+   - Otherwise, treats it as a literal string (even if it contains `#`)
 3. Attempts to acquire a Redis lock via Redisson
 4. If acquired: executes the method, then releases the lock
 5. If not acquired: invokes the configured `skipHandler`
 
 The aspect runs with `Ordered.HIGHEST_PRECEDENCE` to ensure locks are acquired before transactions begin.
+
+**SpEL Evaluation**: Keys starting with `#{` and ending with `}` are evaluated as SpEL expressions. All other keys are treated as literal strings, allowing keys like `order#123` or `#task` to work without escaping.
 
 ## License
 

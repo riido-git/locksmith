@@ -124,22 +124,22 @@ class DistributedLockAspectTest {
   /** Test class with annotated methods for SpEL testing. */
   public static class SpelTestClass {
 
-    @DistributedLock(key = "#userId")
+    @DistributedLock(key = "#{#userId}")
     public void processUser(String userId) {}
 
-    @DistributedLock(key = "'user-' + #id")
+    @DistributedLock(key = "#{'user-' + #id}")
     public void processWithPrefix(Long id) {}
 
-    @DistributedLock(key = "#user.id")
+    @DistributedLock(key = "#{#user.id}")
     public void updateUser(TestUser user) {}
 
     @DistributedLock(key = "static-key")
     public void staticKeyMethod() {}
 
-    @DistributedLock(key = "#value")
+    @DistributedLock(key = "#{#value}")
     public void processWithBlankValue(String value) {}
 
-    @DistributedLock(key = "#user.name")
+    @DistributedLock(key = "#{#user.name}")
     public void processUserName(TestUser user) {}
 
     public record TestUser(String id, String name) {

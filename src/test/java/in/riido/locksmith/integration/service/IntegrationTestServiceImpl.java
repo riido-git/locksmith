@@ -17,7 +17,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(key = "#userId")
+  @DistributedLock(key = "#{#userId}")
   public String lockedMethodWithSpelKey(String userId) {
     return "processed:" + userId;
   }

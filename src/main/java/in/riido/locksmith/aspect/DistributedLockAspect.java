@@ -335,26 +335,49 @@ public class DistributedLockAspect {
   /**
    * Resolves the lock key, evaluating SpEL expressions if present.
    *
+   * <p>SpEL expressions must be wrapped in <code>#{...}</code> syntax: <code>#{#userId}</code>,
+   * <code>#{'user-' + #id}</code>
+   *
+   * <p>Literal keys (without SpEL) are returned as-is and can contain any characters including
+   * <code>#</code>: <code>order#123</code>, <code>item-#1</code>, <code>task#</code>
+   *
    * @param keyExpression the key expression (literal or SpEL)
    * @param method the method being invoked
    * @param joinPoint the join point for accessing method arguments
    * @return the resolved key string
    */
-  private String resolveKey(String keyExpression, Method method, ProceedingJoinPoint joinPoint) {
-    if (!keyExpression.contains("#")) {
-      return keyExpression;
+  public String resolveKey(String keyExpression, Method method, ProceedingJoinPoint joinPoint) {
+    // Check for #{...} syntax for SpEL expressions
+    if (keyExpression.startsWith("#{") && keyExpression.endsWith("}")) {
+      return evaluateSpELExpression(
+          keyExpression.substring(2, keyExpression.length() - 1), method, joinPoint);
     }
 
+    // No SpEL detected - return as literal key
+    return keyExpression;
+  }
+
+  /**
+   * Evaluates a SpEL expression and returns the resolved key.
+   *
+   * @param spELExpression the SpEL expression to evaluate (without #{} wrapper)
+   * @param method the method being invoked
+   * @param joinPoint the join point for accessing method arguments
+   * @return the resolved key string
+   * @throws IllegalArgumentException if the expression evaluates to null or blank
+   */
+  private String evaluateSpELExpression(
+      String spELExpression, Method method, ProceedingJoinPoint joinPoint) {
     EvaluationContext context =
         new MethodBasedEvaluationContext(
             null, method, joinPoint.getArgs(), PARAMETER_NAME_DISCOVERER);
 
-    Object result = EXPRESSION_PARSER.parseExpression(keyExpression).getValue(context);
+    Object result = EXPRESSION_PARSER.parseExpression(spELExpression).getValue(context);
 
     if (result == null) {
       throw new IllegalArgumentException(
           "SpEL expression '"
-              + keyExpression
+              + spELExpression
               + "' evaluated to null for method: "
               + formatMethodSignature(joinPoint));
     }
@@ -363,7 +386,7 @@ public class DistributedLockAspect {
     if (resolvedKey.isBlank()) {
       throw new IllegalArgumentException(
           "SpEL expression '"
-              + keyExpression
+              + spELExpression
               + "' evaluated to blank for method: "
               + formatMethodSignature(joinPoint));
     }

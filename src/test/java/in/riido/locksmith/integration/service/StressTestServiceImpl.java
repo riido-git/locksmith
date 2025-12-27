@@ -14,7 +14,7 @@ public class StressTestServiceImpl implements StressTestService {
   }
 
   @Override
-  @DistributedLock(key = "#key", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
+  @DistributedLock(key = "#{#key}", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void multiKeyMethod(String key) {
     // Minimal work
   }
