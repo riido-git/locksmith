@@ -25,7 +25,7 @@ import org.redisson.api.RedissonClient;
  * @see <a href="https://github.com/riido-git/locksmith/issues/13">GitHub Issue #13</a>
  */
 @DisplayName("SpEL Key Resolution Tests")
-class SpelKeyResolutionTest {
+class SpELKeyResolutionTest {
 
   private DistributedLockAspect aspect;
   private ProceedingJoinPoint joinPoint;
