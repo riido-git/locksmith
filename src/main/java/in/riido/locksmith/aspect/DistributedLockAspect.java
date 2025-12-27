@@ -28,6 +28,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.Order;
 import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 
@@ -51,6 +52,7 @@ public class DistributedLockAspect {
       new DefaultParameterNameDiscoverer();
   private static final Map<Class<? extends LockSkipHandler>, LockSkipHandler> HANDLER_CACHE =
       new ConcurrentHashMap<>(5);
+  private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
   private final RedissonClient redissonClient;
   private final LocksmithProperties lockProperties;
@@ -360,19 +362,26 @@ public class DistributedLockAspect {
   /**
    * Evaluates a SpEL expression and returns the resolved key.
    *
+   * <p>SpEL expressions are cached after first parse to avoid repeated parsing overhead. The cache
+   * is bounded by the number of unique {@code @DistributedLock} annotations in the application.
+   *
    * @param spELExpression the SpEL expression to evaluate (without #{} wrapper)
    * @param method the method being invoked
    * @param joinPoint the join point for accessing method arguments
    * @return the resolved key string
    * @throws IllegalArgumentException if the expression evaluates to null or blank
    */
-  private String evaluateSpELExpression(
+  public String evaluateSpELExpression(
       String spELExpression, Method method, ProceedingJoinPoint joinPoint) {
     EvaluationContext context =
         new MethodBasedEvaluationContext(
             null, method, joinPoint.getArgs(), PARAMETER_NAME_DISCOVERER);
 
-    Object result = EXPRESSION_PARSER.parseExpression(spELExpression).getValue(context);
+    // Cache parsed expressions to avoid repeated parsing overhead
+    Expression expression =
+        EXPRESSION_CACHE.computeIfAbsent(spELExpression, EXPRESSION_PARSER::parseExpression);
+
+    Object result = expression.getValue(context);
 
     if (result == null) {
       throw new IllegalArgumentException(
