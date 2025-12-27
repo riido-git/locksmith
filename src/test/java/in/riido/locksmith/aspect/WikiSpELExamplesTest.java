@@ -592,8 +592,7 @@ class WikiSpELExamplesTest {
     void shouldAccessObjectInCollection() throws Exception {
       Method method = WikiExamples.class.getMethod("processFirstUser", List.class);
       when(methodSignature.getMethod()).thenReturn(method);
-      List<WikiExamples.User> users =
-			  List.of(new WikiExamples.User("1", "John", "john@test.com"));
+      List<WikiExamples.User> users = List.of(new WikiExamples.User("1", "John", "john@test.com"));
       when(joinPoint.getArgs()).thenReturn(new Object[] {users});
 
       String result = aspect.resolveKey("#{#users[0].name}", method, joinPoint);
