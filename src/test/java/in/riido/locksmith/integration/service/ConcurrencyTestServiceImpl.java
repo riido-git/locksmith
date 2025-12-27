@@ -118,7 +118,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   }
 
   @Override
-  @DistributedLock(key = "#key", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "#{#key}", skipHandler = ReturnDefaultHandler.class)
   public void isolatedLockMethod(
       String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions) {
     int current = concurrentExecutions.incrementAndGet();

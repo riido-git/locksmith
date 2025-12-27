@@ -100,7 +100,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "#key", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "#{#key}", skipHandler = ReturnDefaultHandler.class)
   public void isolatedLockMethod(
       String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions) {
     int current = concurrentExecutions.incrementAndGet();
@@ -143,7 +143,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "#key", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
+  @DistributedLock(key = "#{#key}", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
   public void performanceTestMethod(String key) {
     try {
       Thread.sleep(5);
