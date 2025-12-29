@@ -211,7 +211,7 @@ public void longRunningTask() {
 ```
 
 When `autoRenew` is enabled:
-- Redisson automatically extends the lock every ~10 seconds (configurable via Redisson's `lockWatchdogTimeout`)
+- Redisson automatically extends the lock every ~10 seconds (lockWatchdogTimeout / 3, where lockWatchdogTimeout defaults to 30 seconds)
 - The lock is released when the method completes or the thread terminates
 - `leaseTime` is ignored (a warning is logged if specified)
 - `onLeaseExpired` has no effect (the lock never expires during execution)

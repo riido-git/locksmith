@@ -180,9 +180,9 @@ public @interface DistributedLock {
    * Enables automatic lease renewal using Redisson's watchdog mechanism.
    *
    * <p>When enabled, Redisson will automatically extend the lock's lease time approximately every
-   * 10 seconds (configurable via Redisson's lockWatchdogTimeout setting) as long as the method is
-   * executing and the thread is alive. The lock will be released when the method completes or the
-   * thread terminates.
+   * 10 seconds (lockWatchdogTimeout / 3, where lockWatchdogTimeout defaults to 30 seconds) as long
+   * as the method is executing and the thread is alive. The lock will be released when the method
+   * completes or the thread terminates.
    *
    * <p><b>Trade-offs:</b>
    *
