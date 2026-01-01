@@ -4,6 +4,7 @@ import in.riido.locksmith.aspect.DistributedLockAspect;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -63,7 +64,13 @@ public class LocksmithAutoConfiguration {
   @ConditionalOnMissingBean
   public DistributedLockAspect distributedLockAspect(
       RedissonClient redissonClient, LocksmithProperties properties) {
-    LOG.info("Initializing locksmith with properties: {}", properties);
+    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
+    String springBootVersion = SpringBootVersion.getVersion();
+    LOG.info(
+        "Initializing locksmith with Spring Boot {} and Redisson {} - Properties: {}",
+        springBootVersion,
+        redissonVersion,
+        properties);
     return new DistributedLockAspect(redissonClient, properties);
   }
 }
