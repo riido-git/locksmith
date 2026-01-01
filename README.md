@@ -31,7 +31,7 @@ Add the dependency to your `pom.xml` (available on [Maven Central](https://centr
 <dependency>
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>1.4.1</version>
+    <version>1.4.2</version>
 </dependency>
 ```
 
@@ -41,7 +41,7 @@ You must also include Redisson and AspectJ in your project:
 <dependency>
     <groupId>org.redisson</groupId>
     <artifactId>redisson</artifactId>
-    <version>4.0.0</version>
+    <version>4.1.0</version>
 </dependency>
 
 <dependency>
