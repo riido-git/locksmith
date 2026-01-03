@@ -181,8 +181,13 @@ public class DistributedLockAspect {
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
       return handleSkip(distributedLock, joinPoint, lockKey, methodName);
     } finally {
-      if (lockAcquired) {
+      if (lockAcquired && lock.isHeldByCurrentThread()) {
         releaseLock(lock, lockKey, methodName);
+      } else if (lockAcquired) {
+        LOG.warn(
+            "Lock [{}] for [{}] is no longer held by current thread (possibly expired), skipping unlock",
+            lockKey,
+            methodName);
       }
     }
   }
