@@ -33,15 +33,15 @@ import java.lang.annotation.Target;
  * public void scheduledTask() { }
  *
  * // SpEL with method parameter - lock per user
- * @DistributedLock(key = "#userId")
+ * @DistributedLock(key = "#{#userId}")
  * public void processUser(String userId) { }
  *
  * // SpEL with object property
- * @DistributedLock(key = "#user.id")
+ * @DistributedLock(key = "#{#user.id}")
  * public void updateUser(User user) { }
  *
  * // SpEL with concatenation
- * @DistributedLock(key = "'user-' + #userId")
+ * @DistributedLock(key = "#{'user-' + #userId}")
  * public void processUser(Long userId) { }
  *
  * // Read lock - allows concurrent reads
@@ -65,8 +65,12 @@ public @interface DistributedLock {
    * The unique key for the lock. This key is used to identify the lock in Redis. Different tasks
    * should use different keys.
    *
-   * <p>Supports Spring Expression Language (SpEL). Use {@code #paramName} to reference method
-   * parameters, {@code #paramName.property} to access object properties.
+   * <p>Supports Spring Expression Language (SpEL). SpEL expressions must be wrapped in {@code
+   * #{...}} syntax. Use {@code #{#paramName}} to reference method parameters, {@code
+   * #{#paramName.property}} to access object properties.
+   *
+   * <p>Literal keys (without {@code #{...}}) are used as-is and can contain any characters
+   * including {@code #}.
    *
    * @return the lock key (literal or SpEL expression)
    */
