@@ -9,6 +9,7 @@ import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.exception.SemaphoreLeaseExpiredException;
 import in.riido.locksmith.handler.SemaphoreContext;
 import in.riido.locksmith.handler.SemaphoreSkipHandler;
+import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
@@ -23,7 +24,6 @@ import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.convert.DurationStyle;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -115,9 +115,9 @@ public class DistributedSemaphoreAspect {
         redissonClient.getPermitExpirableSemaphore(semaphoreKey);
 
     final Duration leaseTime =
-        resolveDuration(annotation.leaseTime(), semaphoreProperties.leaseTime());
+        DurationResolver.resolve(annotation.leaseTime(), semaphoreProperties.leaseTime());
     final Duration waitTime =
-        resolveDuration(annotation.waitTime(), semaphoreProperties.waitTime());
+        DurationResolver.resolve(annotation.waitTime(), semaphoreProperties.waitTime());
 
     if (debugMode) {
       LOG.info(
@@ -370,12 +370,5 @@ public class DistributedSemaphoreAspect {
             joinPoint.getArgs(),
             signature.getReturnType());
     return handler.handle(context);
-  }
-
-  private Duration resolveDuration(String durationString, Duration defaultValue) {
-    if (durationString == null || durationString.isBlank()) {
-      return defaultValue;
-    }
-    return DurationStyle.detectAndParse(durationString);
   }
 }

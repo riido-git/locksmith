@@ -9,6 +9,7 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
@@ -22,7 +23,6 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.convert.DurationStyle;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -106,9 +106,9 @@ public class DistributedLockAspect {
     final Duration leaseTime =
         autoRenew
             ? Duration.ofMillis(-1)
-            : resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
+            : DurationResolver.resolve(distributedLock.leaseTime(), lockProperties.leaseTime());
     final Duration waitTime =
-        resolveDuration(distributedLock.waitTime(), lockProperties.waitTime());
+        DurationResolver.resolve(distributedLock.waitTime(), lockProperties.waitTime());
 
     if (debugMode) {
       LOG.info(
@@ -312,20 +312,5 @@ public class DistributedLockAspect {
             joinPoint.getArgs(),
             signature.getReturnType());
     return handler.handle(context);
-  }
-
-  /**
-   * Resolves a duration from the given string, falling back to the default if blank.
-   *
-   * @param durationString the duration string (e.g., "10m", "30s", "PT10M")
-   * @param defaultValue the default value to use if the string is blank
-   * @return the resolved Duration, or the default value if the string is blank
-   * @throws IllegalArgumentException if the value is not a known style or cannot be * parsed
-   */
-  private Duration resolveDuration(String durationString, Duration defaultValue) {
-    if (durationString == null || durationString.isBlank()) {
-      return defaultValue;
-    }
-    return DurationStyle.detectAndParse(durationString);
   }
 }
