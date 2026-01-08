@@ -1,6 +1,7 @@
 package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
+import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 
 /**
- * Autoconfiguration for Locksmith distributed locking.
+ * Autoconfiguration for Locksmith distributed locking and semaphore support.
  *
  * <p>This configuration is automatically applied when:
  *
@@ -67,10 +68,32 @@ public class LocksmithAutoConfiguration {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
-        "Initializing locksmith with Spring Boot {} and Redisson {} - Properties: {}",
+        "Initializing locksmith lock aspect with Spring Boot {} and Redisson {} - Lock Properties: {}",
         springBootVersion,
         redissonVersion,
-        properties);
+        properties.lock());
     return new DistributedLockAspect(redissonClient, properties);
+  }
+
+  /**
+   * Creates the distributed semaphore aspect bean.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @return the configured DistributedSemaphoreAspect
+   * @since 2.0.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public DistributedSemaphoreAspect distributedSemaphoreAspect(
+      RedissonClient redissonClient, LocksmithProperties properties) {
+    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
+    String springBootVersion = SpringBootVersion.getVersion();
+    LOG.info(
+        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Lock Properties: {}",
+        springBootVersion,
+        redissonVersion,
+        properties.semaphore());
+    return new DistributedSemaphoreAspect(redissonClient, properties);
   }
 }

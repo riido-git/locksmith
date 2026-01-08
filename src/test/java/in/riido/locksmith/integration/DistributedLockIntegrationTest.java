@@ -51,7 +51,10 @@ class DistributedLockIntegrationTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false),
+            null);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations

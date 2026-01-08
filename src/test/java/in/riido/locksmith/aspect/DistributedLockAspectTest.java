@@ -42,7 +42,10 @@ class DistributedLockAspectTest {
   void setUp() {
     redissonClient = mock(RedissonClient.class);
     LocksmithProperties lockProperties =
-        new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false),
+            null);
     aspect = new DistributedLockAspect(redissonClient, lockProperties);
     joinPoint = mock(ProceedingJoinPoint.class);
     methodSignature = mock(MethodSignature.class);
@@ -912,8 +915,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when null")
       void shouldUseDefaultLeaseTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(null, Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(null, Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -921,8 +924,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when zero")
       void shouldUseDefaultLeaseTimeWhenZero() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ZERO, Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ZERO, Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -930,8 +934,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when negative")
       void shouldUseDefaultLeaseTimeWhenNegative() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -939,8 +944,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom lease time when positive")
       void shouldUseCustomLeaseTimeWhenPositive() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
       }
@@ -948,8 +954,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in seconds")
       void shouldAcceptLeaseTimeInSeconds() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofSeconds(300), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofSeconds(300), props.leaseTime());
@@ -958,8 +964,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in hours")
       void shouldAcceptLeaseTimeInHours() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofHours(1), props.leaseTime());
       }
@@ -967,8 +974,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in millis")
       void shouldAcceptLeaseTimeInMillis() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMillis(5000), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMillis(5000), props.leaseTime());
@@ -982,8 +989,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default wait time when null")
       void shouldUseDefaultWaitTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), null, "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(Duration.ofMinutes(10), null, "lock:", false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
       }
@@ -991,8 +998,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default wait time when negative")
       void shouldUseDefaultWaitTimeWhenNegative() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(-30), "lock:", false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1001,8 +1008,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should allow zero wait time")
       void shouldAllowZeroWaitTime() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ZERO, "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ZERO, "lock:", false);
 
         assertEquals(Duration.ZERO, props.waitTime());
       }
@@ -1010,8 +1018,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom wait time when positive")
       void shouldUseCustomWaitTimeWhenPositive() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false);
 
         assertEquals(Duration.ofSeconds(90), props.waitTime());
       }
@@ -1019,8 +1028,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept wait time in minutes")
       void shouldAcceptWaitTimeInMinutes() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false);
 
         assertEquals(Duration.ofMinutes(2), props.waitTime());
       }
@@ -1028,8 +1038,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept wait time in millis")
       void shouldAcceptWaitTimeInMillis() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false);
 
         assertEquals(Duration.ofMillis(500), props.waitTime());
       }
@@ -1042,8 +1053,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when null")
       void shouldUseDefaultKeyPrefixWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), null, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1051,8 +1063,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when empty")
       void shouldUseDefaultKeyPrefixWhenEmpty() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1060,8 +1073,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when blank with spaces")
       void shouldUseDefaultKeyPrefixWhenBlankWithSpaces() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1069,8 +1083,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when blank with tabs")
       void shouldUseDefaultKeyPrefixWhenBlankWithTabs() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1078,8 +1093,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom key prefix when valid")
       void shouldUseCustomKeyPrefixWhenValid() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false);
 
         assertEquals("myapp:", props.keyPrefix());
@@ -1088,8 +1103,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom key prefix without colon")
       void shouldUseCustomKeyPrefixWithoutColon() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "distributed-lock", false);
 
         assertEquals("distributed-lock", props.keyPrefix());
@@ -1098,8 +1113,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should preserve key prefix with special characters")
       void shouldPreserveKeyPrefixWithSpecialCharacters() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "app:env:lock:", false);
 
         assertEquals("app:env:lock:", props.keyPrefix());
@@ -1113,7 +1128,7 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should create instance with all default values")
       void shouldCreateInstanceWithAllDefaultValues() {
-        LocksmithProperties props = LocksmithProperties.defaults();
+        LocksmithProperties.LockProperties props = LocksmithProperties.LockProperties.defaults();
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1123,11 +1138,11 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should match default constants")
       void shouldMatchDefaultConstants() {
-        LocksmithProperties props = LocksmithProperties.defaults();
+        LocksmithProperties.LockProperties props = LocksmithProperties.LockProperties.defaults();
 
-        assertEquals(LocksmithProperties.DEFAULT_LEASE_TIME, props.leaseTime());
-        assertEquals(LocksmithProperties.DEFAULT_WAIT_TIME, props.waitTime());
-        assertEquals(LocksmithProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_LEASE_TIME, props.leaseTime());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_WAIT_TIME, props.waitTime());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
       }
     }
 
@@ -1138,7 +1153,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use all defaults when all parameters are null")
       void shouldUseAllDefaultsWhenAllParametersAreNull() {
-        LocksmithProperties props = new LocksmithProperties(null, null, null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(null, null, null, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1153,8 +1169,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use all custom values when valid")
       void shouldUseAllCustomValuesWhenValid() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(15), Duration.ofSeconds(90), "mylock:", false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
@@ -1165,8 +1181,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle mixed valid and invalid values")
       void shouldHandleMixedValidAndInvalidValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(30), props.waitTime());
@@ -1176,8 +1193,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle very large duration values")
       void shouldHandleVeryLargeDurationValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofDays(1), Duration.ofHours(2), "biglock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofDays(1), Duration.ofHours(2), "biglock:", false);
 
         assertEquals(Duration.ofDays(1), props.leaseTime());
         assertEquals(Duration.ofHours(2), props.waitTime());
@@ -1187,8 +1205,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle very small positive duration values")
       void shouldHandleVerySmallPositiveDurationValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofNanos(1000000), Duration.ofMillis(1), "smalllock:", false);
 
         assertEquals(Duration.ofNanos(1000000), props.leaseTime());

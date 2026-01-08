@@ -58,7 +58,10 @@ class StressPerformanceTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "stress:", false);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(1), Duration.ofSeconds(30), "stress:", false),
+            null);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations

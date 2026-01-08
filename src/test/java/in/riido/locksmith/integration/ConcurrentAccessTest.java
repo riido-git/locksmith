@@ -56,7 +56,9 @@ class ConcurrentAccessTest {
 
     LocksmithProperties properties =
         new LocksmithProperties(
-            Duration.ofMinutes(1), Duration.ofSeconds(30), "concurrent:", false);
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(1), Duration.ofSeconds(30), "concurrent:", false),
+            null);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations

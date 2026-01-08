@@ -1,12 +1,10 @@
 package in.riido.locksmith.aspect;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.support.SpELKeyResolver;
 import java.lang.reflect.Method;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LongSummaryStatistics;
@@ -16,18 +14,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Performance stress tests for SpEL expression evaluation in DistributedLockAspect.
+ * Performance stress tests for SpEL expression evaluation in SpELKeyResolver.
  *
  * <p>These tests demonstrate the performance impact of repeatedly parsing SpEL expressions without
  * caching. The results can be used to justify and measure the effectiveness of implementing
@@ -41,26 +36,11 @@ class SpELExpressionPerformanceTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(SpELExpressionPerformanceTest.class);
 
-  private DistributedLockAspect aspect;
-  private ProceedingJoinPoint joinPoint;
-  private MethodSignature methodSignature;
   private Method testMethod;
 
   @BeforeEach
   void setUp() throws NoSuchMethodException {
-    RedissonClient redissonClient = mock(RedissonClient.class);
-    LocksmithProperties lockProperties =
-        new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false);
-    aspect = new DistributedLockAspect(redissonClient, lockProperties);
-
-    joinPoint = mock(ProceedingJoinPoint.class);
-    methodSignature = mock(MethodSignature.class);
     testMethod = TestService.class.getMethod("processUser", String.class);
-
-    when(joinPoint.getSignature()).thenReturn(methodSignature);
-    when(methodSignature.getDeclaringType()).thenReturn(TestService.class);
-    when(methodSignature.getName()).thenReturn("processUser");
-    when(methodSignature.getMethod()).thenReturn(testMethod);
   }
 
   public static class TestService {
@@ -84,13 +64,12 @@ class SpELExpressionPerformanceTest {
     @DisplayName("Should measure overhead of parsing simple expression repeatedly")
     void shouldMeasureSimpleExpressionParsingOverhead() {
       int iterations = 10_000;
-      String expression = "#userId";
-
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      String expression = "#{#userId}";
+      Object[] args = new Object[] {"user123"};
 
       long startTime = System.nanoTime();
       for (int i = 0; i < iterations; i++) {
-        String result = aspect.evaluateSpELExpression(expression, testMethod, joinPoint);
+        String result = SpELKeyResolver.resolve(expression, testMethod, args);
         assertEquals("user123", result);
       }
       long endTime = System.nanoTime();
@@ -112,15 +91,14 @@ class SpELExpressionPerformanceTest {
     @DisplayName("Should measure overhead of parsing complex expression repeatedly")
     void shouldMeasureComplexExpressionParsingOverhead() throws NoSuchMethodException {
       int iterations = 10_000;
-      String expression = "'user-' + #id + '-order-' + #orderId";
+      String expression = "#{'user-' + #id + '-order-' + #orderId}";
 
       Method method = TestService.class.getMethod("processOrder", Long.class, String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {123L, "ORD456"});
+      Object[] args = new Object[] {123L, "ORD456"};
 
       long startTime = System.nanoTime();
       for (int i = 0; i < iterations; i++) {
-        String result = aspect.evaluateSpELExpression(expression, method, joinPoint);
+        String result = SpELKeyResolver.resolve(expression, method, args);
         assertEquals("user-123-order-ORD456", result);
       }
       long endTime = System.nanoTime();
@@ -144,16 +122,14 @@ class SpELExpressionPerformanceTest {
     @DisplayName("Should measure overhead of parsing property access expression repeatedly")
     void shouldMeasurePropertyAccessParsingOverhead() throws NoSuchMethodException {
       int iterations = 10_000;
-      String expression = "#user.name + '-' + #user.email";
+      String expression = "#{#user.name + '-' + #user.email}";
 
       Method method = TestService.class.getMethod("processUserData", TestService.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {new TestService.User("Alice", "alice@example.com", 30)});
+      Object[] args = new Object[] {new TestService.User("Alice", "alice@example.com", 30)};
 
       long startTime = System.nanoTime();
       for (int i = 0; i < iterations; i++) {
-        String result = aspect.evaluateSpELExpression(expression, method, joinPoint);
+        String result = SpELKeyResolver.resolve(expression, method, args);
         assertEquals("Alice-alice@example.com", result);
       }
       long endTime = System.nanoTime();
@@ -182,28 +158,32 @@ class SpELExpressionPerformanceTest {
       List<ExpressionTest> tests =
           List.of(
               new ExpressionTest(
-                  "Simple parameter", "#userId", testMethod, new Object[] {"user123"}, "user123"),
+                  "Simple parameter",
+                  "#{#userId}",
+                  testMethod,
+                  new Object[] {"user123"},
+                  "user123"),
               new ExpressionTest(
                   "String concatenation",
-                  "'user-' + #userId",
+                  "#{'user-' + #userId}",
                   testMethod,
                   new Object[] {"user123"},
                   "user-user123"),
               new ExpressionTest(
                   "Multiple parameters",
-                  "#id + '-' + #orderId",
+                  "#{#id + '-' + #orderId}",
                   TestService.class.getMethod("processOrder", Long.class, String.class),
                   new Object[] {123L, "ORD456"},
                   "123-ORD456"),
               new ExpressionTest(
                   "Property access",
-                  "#user.name",
+                  "#{#user.name}",
                   TestService.class.getMethod("processUserData", TestService.User.class),
                   new Object[] {new TestService.User("Bob", "bob@test.com", 25)},
                   "Bob"),
               new ExpressionTest(
                   "Complex property access",
-                  "#user.name + '-' + #user.email + '-' + #user.age",
+                  "#{#user.name + '-' + #user.email + '-' + #user.age}",
                   TestService.class.getMethod("processUserData", TestService.User.class),
                   new Object[] {new TestService.User("Charlie", "charlie@test.com", 35)},
                   "Charlie-charlie@test.com-35"));
@@ -214,12 +194,9 @@ class SpELExpressionPerformanceTest {
       LOG.info("─".repeat(80));
 
       for (ExpressionTest test : tests) {
-        when(methodSignature.getMethod()).thenReturn(test.method);
-        when(joinPoint.getArgs()).thenReturn(test.args);
-
         long startTime = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
-          String result = aspect.evaluateSpELExpression(test.expression, test.method, joinPoint);
+          String result = SpELKeyResolver.resolve(test.expression, test.method, test.args);
           assertEquals(test.expectedResult, result);
         }
         long endTime = System.nanoTime();
@@ -247,9 +224,8 @@ class SpELExpressionPerformanceTest {
     void shouldMeasureConcurrentParsingOverheadSameExpression() throws InterruptedException {
       int threadCount = 10;
       int iterationsPerThread = 5_000;
-      String expression = "#userId";
-
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      String expression = "#{#userId}";
+      Object[] args = new Object[] {"user123"};
 
       AtomicLong totalNanoseconds = new AtomicLong(0);
       CountDownLatch startSignal = new CountDownLatch(1);
@@ -267,7 +243,7 @@ class SpELExpressionPerformanceTest {
 
                 long threadStart = System.nanoTime();
                 for (int i = 0; i < iterationsPerThread; i++) {
-                  String result = aspect.evaluateSpELExpression(expression, testMethod, joinPoint);
+                  String result = SpELKeyResolver.resolve(expression, testMethod, args);
                   assertEquals("user123", result);
                 }
                 long threadEnd = System.nanoTime();
@@ -313,28 +289,29 @@ class SpELExpressionPerformanceTest {
       // Different expressions for different threads
       List<ExpressionTest> expressions =
           List.of(
-              new ExpressionTest("Simple", "#userId", testMethod, new Object[] {"user1"}, "user1"),
+              new ExpressionTest(
+                  "Simple", "#{#userId}", testMethod, new Object[] {"user1"}, "user1"),
               new ExpressionTest(
                   "Concatenation",
-                  "'user-' + #userId",
+                  "#{'user-' + #userId}",
                   testMethod,
                   new Object[] {"user2"},
                   "user-user2"),
               new ExpressionTest(
                   "Multiple params",
-                  "#userId + '-test'",
+                  "#{#userId + '-test'}",
                   testMethod,
                   new Object[] {"user3"},
                   "user3-test"),
               new ExpressionTest(
                   "Complex concat",
-                  "'prefix-' + #userId + '-suffix'",
+                  "#{'prefix-' + #userId + '-suffix'}",
                   testMethod,
                   new Object[] {"user4"},
                   "prefix-user4-suffix"),
               new ExpressionTest(
                   "Upper case",
-                  "#userId.toUpperCase()",
+                  "#{#userId.toUpperCase()}",
                   testMethod,
                   new Object[] {"user5"},
                   "USER5"));
@@ -356,10 +333,7 @@ class SpELExpressionPerformanceTest {
 
                 long threadStart = System.nanoTime();
                 for (int i = 0; i < iterationsPerThread; i++) {
-                  String result =
-                      aspect.evaluateSpELExpression(test.expression, test.method, joinPoint);
-                  // Note: using shared joinPoint mock, so we set args in the thread
-                  when(joinPoint.getArgs()).thenReturn(test.args);
+                  String result = SpELKeyResolver.resolve(test.expression, test.method, test.args);
                   assertEquals(test.expectedResult, result);
                 }
                 long threadEnd = System.nanoTime();
@@ -401,9 +375,8 @@ class SpELExpressionPerformanceTest {
     void shouldMeasureLatencyDistribution() throws InterruptedException {
       int threadCount = 8;
       int iterationsPerThread = 1_000;
-      String expression = "#userId";
-
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      String expression = "#{#userId}";
+      Object[] args = new Object[] {"user123"};
 
       ConcurrentLinkedQueue<Long> latencies = new ConcurrentLinkedQueue<>();
       CountDownLatch startSignal = new CountDownLatch(1);
@@ -419,7 +392,7 @@ class SpELExpressionPerformanceTest {
 
                 for (int i = 0; i < iterationsPerThread; i++) {
                   long start = System.nanoTime();
-                  String result = aspect.evaluateSpELExpression(expression, testMethod, joinPoint);
+                  String result = SpELKeyResolver.resolve(expression, testMethod, args);
                   long latency = System.nanoTime() - start;
                   latencies.add(latency);
                   assertEquals("user123", result);
@@ -478,9 +451,8 @@ class SpELExpressionPerformanceTest {
       int threadCount = 5;
       int phaseDurationSeconds = 2;
       int phaseCount = 5;
-      String expression = "#userId";
-
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      String expression = "#{#userId}";
+      Object[] args = new Object[] {"user123"};
 
       List<PhaseResult> phaseResults = new ArrayList<>();
       ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -506,8 +478,7 @@ class SpELExpressionPerformanceTest {
 
                   while (System.currentTimeMillis() < endTime) {
                     long start = System.nanoTime();
-                    String result =
-                        aspect.evaluateSpELExpression(expression, testMethod, joinPoint);
+                    String result = SpELKeyResolver.resolve(expression, testMethod, args);
                     long latency = System.nanoTime() - start;
 
                     totalLatency.addAndGet(latency);

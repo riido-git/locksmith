@@ -5,10 +5,11 @@ import in.riido.locksmith.LeaseExpirationBehavior;
 import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
-import java.lang.reflect.Method;
+import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,15 +23,8 @@ import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.convert.DurationStyle;
-import org.springframework.context.expression.MethodBasedEvaluationContext;
-import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.Ordered;
-import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.Order;
-import org.springframework.expression.EvaluationContext;
-import org.springframework.expression.Expression;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 
 /**
  * Aspect that handles distributed locking for methods annotated with {@link DistributedLock}. Uses
@@ -47,25 +41,21 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 public class DistributedLockAspect {
 
   private static final Logger LOG = LoggerFactory.getLogger(DistributedLockAspect.class);
-  private static final ExpressionParser EXPRESSION_PARSER = new SpelExpressionParser();
-  private static final ParameterNameDiscoverer PARAMETER_NAME_DISCOVERER =
-      new DefaultParameterNameDiscoverer();
   private static final Map<Class<? extends LockSkipHandler>, LockSkipHandler> HANDLER_CACHE =
       new ConcurrentHashMap<>(5);
-  private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
   private final RedissonClient redissonClient;
-  private final LocksmithProperties lockProperties;
+  private final LockProperties lockProperties;
 
   /**
    * Constructs a new DistributedLockAspect.
    *
    * @param redissonClient the Redisson client for Redis operations
-   * @param lockProperties the configuration properties
+   * @param properties the configuration properties
    */
-  public DistributedLockAspect(RedissonClient redissonClient, LocksmithProperties lockProperties) {
+  public DistributedLockAspect(RedissonClient redissonClient, LocksmithProperties properties) {
     this.redissonClient = redissonClient;
-    this.lockProperties = lockProperties;
+    this.lockProperties = properties.lock();
   }
 
   /**
@@ -91,7 +81,7 @@ public class DistributedLockAspect {
               + signature.getName());
     }
 
-    final String resolvedKey = resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
+    final String resolvedKey = SpELKeyResolver.resolve(distributedLock.key(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = getLock(lockKey, distributedLock.type());
     final boolean autoRenew = distributedLock.autoRenew();
@@ -337,74 +327,5 @@ public class DistributedLockAspect {
       return defaultValue;
     }
     return DurationStyle.detectAndParse(durationString);
-  }
-
-  /**
-   * Resolves the lock key, evaluating SpEL expressions if present.
-   *
-   * <p>SpEL expressions must be wrapped in <code>#{...}</code> syntax: <code>#{#userId}</code>,
-   * <code>#{'user-' + #id}</code>
-   *
-   * <p>Literal keys (without SpEL) are returned as-is and can contain any characters including
-   * <code>#</code>: <code>order#123</code>, <code>item-#1</code>, <code>task#</code>
-   *
-   * @param keyExpression the key expression (literal or SpEL)
-   * @param method the method being invoked
-   * @param joinPoint the join point for accessing method arguments
-   * @return the resolved key string
-   */
-  public String resolveKey(String keyExpression, Method method, ProceedingJoinPoint joinPoint) {
-    // Check for #{...} syntax for SpEL expressions
-    if (keyExpression.startsWith("#{") && keyExpression.endsWith("}")) {
-      return evaluateSpELExpression(
-          keyExpression.substring(2, keyExpression.length() - 1), method, joinPoint);
-    }
-
-    // No SpEL detected - return as literal key
-    return keyExpression;
-  }
-
-  /**
-   * Evaluates a SpEL expression and returns the resolved key.
-   *
-   * <p>SpEL expressions are cached after first parse to avoid repeated parsing overhead. The cache
-   * is bounded by the number of unique {@code @DistributedLock} annotations in the application.
-   *
-   * @param spELExpression the SpEL expression to evaluate (without #{} wrapper)
-   * @param method the method being invoked
-   * @param joinPoint the join point for accessing method arguments
-   * @return the resolved key string
-   * @throws IllegalArgumentException if the expression evaluates to null or blank
-   */
-  public String evaluateSpELExpression(
-      String spELExpression, Method method, ProceedingJoinPoint joinPoint) {
-    EvaluationContext context =
-        new MethodBasedEvaluationContext(
-            null, method, joinPoint.getArgs(), PARAMETER_NAME_DISCOVERER);
-
-    // Cache parsed expressions to avoid repeated parsing overhead
-    Expression expression =
-        EXPRESSION_CACHE.computeIfAbsent(spELExpression, EXPRESSION_PARSER::parseExpression);
-
-    Object result = expression.getValue(context);
-
-    if (result == null) {
-      throw new IllegalArgumentException(
-          "SpEL expression '"
-              + spELExpression
-              + "' evaluated to null for method: "
-              + formatMethodSignature(joinPoint));
-    }
-
-    String resolvedKey = result.toString();
-    if (resolvedKey.isBlank()) {
-      throw new IllegalArgumentException(
-          "SpEL expression '"
-              + spELExpression
-              + "' evaluated to blank for method: "
-              + formatMethodSignature(joinPoint));
-    }
-
-    return resolvedKey;
   }
 }

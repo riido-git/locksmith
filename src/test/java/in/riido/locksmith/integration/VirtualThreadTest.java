@@ -82,7 +82,10 @@ class VirtualThreadTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false),
+            null);
     DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
 
     AspectJProxyFactory factory = new AspectJProxyFactory(new VirtualThreadTestServiceImpl());
