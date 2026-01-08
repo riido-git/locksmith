@@ -97,7 +97,7 @@ public @interface DistributedLock {
    *
    * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
    */
-  LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
+  AcquisitionMode mode() default AcquisitionMode.SKIP_IMMEDIATELY;
 
   /**
    * Override the default lease time. The lock will be automatically released after this duration.

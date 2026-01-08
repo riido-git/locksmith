@@ -112,7 +112,7 @@ public @interface DistributedSemaphore {
    *
    * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
    */
-  LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
+  AcquisitionMode mode() default AcquisitionMode.SKIP_IMMEDIATELY;
 
   /**
    * Override the default wait time for WAIT_AND_SKIP mode. Use an empty string to use the default

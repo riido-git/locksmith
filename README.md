@@ -184,7 +184,7 @@ Use `WAIT_AND_SKIP` mode to wait for the lock before giving up:
 ```java
 @DistributedLock(
     key = "resource-lock",
-    mode = LockAcquisitionMode.WAIT_AND_SKIP,
+    mode = AcquisitionMode.WAIT_AND_SKIP,
     waitTime = "30s"
 )
 public void accessResource() { }
@@ -197,7 +197,7 @@ Override the default wait time per method:
 ```java
 @DistributedLock(
     key = "resource-lock",
-    mode = LockAcquisitionMode.WAIT_AND_SKIP,
+    mode = AcquisitionMode.WAIT_AND_SKIP,
     waitTime = "2m"
 )
 public void accessResource() { }
@@ -345,7 +345,7 @@ Built-in handlers:
 |-----------|------|---------|-------------|
 | `key` | String | (required) | Lock key - literal string or SpEL expression wrapped in `#{...}` |
 | `type` | LockType | `REENTRANT` | Type of lock (REENTRANT, READ, WRITE) |
-| `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
+| `mode` | AcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the lock |
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `autoRenew` | boolean | `false` | Enable automatic lease renewal via Redisson's watchdog |
@@ -360,7 +360,7 @@ Built-in handlers:
 | `READ` | Shared lock - multiple concurrent readers allowed |
 | `WRITE` | Exclusive lock - blocks all readers and writers |
 
-**`LockAcquisitionMode`**
+**`AcquisitionMode`**
 
 | Value | Description |
 |-------|-------------|
@@ -444,7 +444,7 @@ Use `WAIT_AND_SKIP` mode to wait for an available permit:
 @DistributedSemaphore(
     key = "resource-pool",
     permits = 10,
-    mode = LockAcquisitionMode.WAIT_AND_SKIP,
+    mode = AcquisitionMode.WAIT_AND_SKIP,
     waitTime = "30s"
 )
 public void accessResourcePool() { }
@@ -519,7 +519,7 @@ try {
 |-----------|------|---------|-------------|
 | `key` | String | (required) | Semaphore key - literal string or SpEL expression wrapped in `#{...}` |
 | `permits` | int | (required) | Maximum concurrent executions allowed |
-| `mode` | LockAcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the permit |
+| `mode` | AcquisitionMode | `SKIP_IMMEDIATELY` | How to acquire the permit |
 | `leaseTime` | String | `""` (use config) | Permit auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `skipHandler` | Class | `SemaphoreThrowExceptionHandler` | Handler for permit acquisition failures |

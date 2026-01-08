@@ -1,7 +1,7 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.handler.ReturnDefaultHandler;
 import java.util.concurrent.CountDownLatch;
@@ -69,10 +69,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "wait-test-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "5s")
+  @DistributedLock(key = "wait-test-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void waitAndExecuteMethod(AtomicInteger count) {
     count.incrementAndGet();
   }

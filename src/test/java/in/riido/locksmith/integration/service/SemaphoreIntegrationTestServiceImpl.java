@@ -1,8 +1,8 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedSemaphore;
 import in.riido.locksmith.LeaseExpirationBehavior;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.handler.SemaphoreReturnDefaultHandler;
 import in.riido.locksmith.handler.SemaphoreThrowExceptionHandler;
 import java.util.List;
@@ -92,7 +92,7 @@ public class SemaphoreIntegrationTestServiceImpl implements SemaphoreIntegration
   @DistributedSemaphore(
       key = "wait-and-acquire",
       permits = 2,
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "5s",
       skipHandler = SemaphoreReturnDefaultHandler.class)
   public boolean waitAndAcquirePermit(AtomicInteger counter) {
@@ -137,7 +137,7 @@ public class SemaphoreIntegrationTestServiceImpl implements SemaphoreIntegration
   @DistributedSemaphore(
       key = "concurrent-tracking",
       permits = 5,
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "10s")
   public void trackConcurrentExecution(
       AtomicInteger activeCount,
@@ -162,7 +162,7 @@ public class SemaphoreIntegrationTestServiceImpl implements SemaphoreIntegration
   @DistributedSemaphore(
       key = "#{#key}",
       permits = 3,
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "5s")
   public void multiKeyPermit(String key, AtomicInteger counter) {
     counter.incrementAndGet();
@@ -192,7 +192,7 @@ public class SemaphoreIntegrationTestServiceImpl implements SemaphoreIntegration
   @DistributedSemaphore(
       key = "ordered-execution",
       permits = 2,
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "30s")
   public void orderedPermitAcquisition(int id, List<Integer> executionOrder) {
     synchronized (executionOrder) {

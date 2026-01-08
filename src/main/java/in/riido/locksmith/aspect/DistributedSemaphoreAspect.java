@@ -1,8 +1,8 @@
 package in.riido.locksmith.aspect;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedSemaphore;
 import in.riido.locksmith.LeaseExpirationBehavior;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
@@ -261,7 +261,7 @@ public class DistributedSemaphoreAspect {
    */
   private String tryAcquirePermit(
       RPermitExpirableSemaphore semaphore,
-      LockAcquisitionMode mode,
+      AcquisitionMode mode,
       Duration waitTime,
       Duration leaseTime)
       throws InterruptedException {

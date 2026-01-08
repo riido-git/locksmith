@@ -1,7 +1,7 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.handler.ReturnDefaultHandler;
 import java.util.List;
@@ -13,10 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
 
   @Override
-  @DistributedLock(
-      key = "exclusive-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "5s")
+  @DistributedLock(key = "exclusive-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void exclusiveLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
     if (current > 1) {
@@ -66,7 +63,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   }
 
   @Override
-  @DistributedLock(key = "order-lock", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "10s")
+  @DistributedLock(key = "order-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "10s")
   public void orderedExecutionMethod(int index, List<Integer> order) {
     order.add(index);
     try {

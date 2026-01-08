@@ -1,7 +1,7 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.handler.ReturnDefaultHandler;
 import java.util.List;
@@ -15,7 +15,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   @Override
   @DistributedLock(
       key = "vt-exclusive-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "30s")
   public void exclusiveLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
@@ -114,10 +114,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "vt-order-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "30s")
+  @DistributedLock(key = "vt-order-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
   public void waitAndExecuteMethod(int index, List<Integer> order) {
     order.add(index);
     try {
@@ -128,7 +125,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "vt-wait-lock", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "60s")
+  @DistributedLock(key = "vt-wait-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "60s")
   public void waitForLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
     if (current > 1) {
@@ -143,7 +140,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "#{#key}", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
+  @DistributedLock(key = "#{#key}", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
   public void performanceTestMethod(String key) {
     try {
       Thread.sleep(5);

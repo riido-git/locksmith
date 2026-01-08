@@ -1,8 +1,8 @@
 package in.riido.locksmith.aspect;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LeaseExpirationBehavior;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
@@ -252,7 +252,7 @@ public class DistributedLockAspect {
   }
 
   private boolean tryAcquireLock(
-      RLock lock, LockAcquisitionMode mode, Duration waitTime, Duration leaseTime)
+      RLock lock, AcquisitionMode mode, Duration waitTime, Duration leaseTime)
       throws InterruptedException {
     final long leaseTimeMs = leaseTime.toMillis();
     final long waitTimeMs = waitTime.toMillis();

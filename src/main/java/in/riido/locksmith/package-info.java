@@ -5,7 +5,7 @@
  *
  * <ul>
  *   <li>{@link in.riido.locksmith.DistributedLock} - The main annotation for locking methods
- *   <li>{@link in.riido.locksmith.LockAcquisitionMode} - Lock acquisition strategies
+ *   <li>{@link in.riido.locksmith.AcquisitionMode} - Lock and semaphore acquisition strategies
  *   <li>{@link in.riido.locksmith.LockType} - Types of locks (reentrant, read, write)
  *   <li>{@link in.riido.locksmith.handler.LockSkipHandler} - Custom skip handler interface
  * </ul>

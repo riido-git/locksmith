@@ -1,7 +1,7 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.handler.ReturnDefaultHandler;
 
 /** Test service implementation for stress and performance tests. */
@@ -14,7 +14,7 @@ public class StressTestServiceImpl implements StressTestService {
   }
 
   @Override
-  @DistributedLock(key = "#{#key}", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
+  @DistributedLock(key = "#{#key}", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void multiKeyMethod(String key) {
     // Minimal work
   }
@@ -26,10 +26,7 @@ public class StressTestServiceImpl implements StressTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "throughput-test",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "10s")
+  @DistributedLock(key = "throughput-test", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "10s")
   public void throughputMethod() {
     // Minimal work
   }
@@ -53,10 +50,7 @@ public class StressTestServiceImpl implements StressTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "sustained-load",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "5s")
+  @DistributedLock(key = "sustained-load", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void sustainedLoadMethod() {
     // Minimal work
   }
