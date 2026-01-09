@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.expression.MethodBasedEvaluationContext;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
@@ -59,7 +61,9 @@ public final class SpELKeyResolver {
    * @return the resolved key string
    * @throws IllegalArgumentException if the SpEL expression evaluates to null or blank
    */
-  public static String resolve(String keyExpression, ProceedingJoinPoint joinPoint) {
+  @NonNull
+  public static String resolve(
+      @NonNull String keyExpression, @NonNull ProceedingJoinPoint joinPoint) {
     MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     return resolve(keyExpression, signature.getMethod(), joinPoint.getArgs());
   }
@@ -75,7 +79,9 @@ public final class SpELKeyResolver {
    * @return the resolved key string
    * @throws IllegalArgumentException if the SpEL expression evaluates to null or blank
    */
-  public static String resolve(String keyExpression, Method method, Object[] args) {
+  @NonNull
+  public static String resolve(
+      @NonNull String keyExpression, @NonNull Method method, @Nullable Object[] args) {
     if (keyExpression.startsWith("#{") && keyExpression.endsWith("}")) {
       return evaluateSpEL(keyExpression.substring(2, keyExpression.length() - 1), method, args);
     }
@@ -93,7 +99,9 @@ public final class SpELKeyResolver {
    * @return the resolved key string
    * @throws IllegalArgumentException if the expression evaluates to null or blank
    */
-  private static String evaluateSpEL(String spELExpression, Method method, Object[] args) {
+  @NonNull
+  private static String evaluateSpEL(
+      @NonNull String spELExpression, @NonNull Method method, @Nullable Object[] args) {
     EvaluationContext context =
         new MethodBasedEvaluationContext(null, method, args, PARAMETER_NAME_DISCOVERER);
 
@@ -132,7 +140,7 @@ public final class SpELKeyResolver {
    * @param keyExpression the key expression to check
    * @return true if the expression is wrapped in #{...}, false otherwise
    */
-  public static boolean isSpELExpression(String keyExpression) {
+  public static boolean isSpELExpression(@NonNull String keyExpression) {
     return keyExpression.startsWith("#{") && keyExpression.endsWith("}");
   }
 }

@@ -1,6 +1,7 @@
 package in.riido.locksmith.exception;
 
 import java.io.Serial;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Exception thrown when a semaphore configuration is invalid or inconsistent.
@@ -29,7 +30,7 @@ public class SemaphoreConfigurationException extends RuntimeException {
    * @param message the detail message
    * @param semaphoreKey the semaphore key with configuration issues
    */
-  public SemaphoreConfigurationException(String message, String semaphoreKey) {
+  public SemaphoreConfigurationException(@NonNull String message, @NonNull String semaphoreKey) {
     super(message);
     this.semaphoreKey = semaphoreKey;
   }
@@ -41,7 +42,8 @@ public class SemaphoreConfigurationException extends RuntimeException {
    * @param semaphoreKey the semaphore key with configuration issues
    * @param cause the cause of this exception
    */
-  public SemaphoreConfigurationException(String message, String semaphoreKey, Throwable cause) {
+  public SemaphoreConfigurationException(
+      @NonNull String message, @NonNull String semaphoreKey, @NonNull Throwable cause) {
     super(message, cause);
     this.semaphoreKey = semaphoreKey;
   }
@@ -51,6 +53,7 @@ public class SemaphoreConfigurationException extends RuntimeException {
    *
    * @return the semaphore key
    */
+  @NonNull
   public String getSemaphoreKey() {
     return semaphoreKey;
   }

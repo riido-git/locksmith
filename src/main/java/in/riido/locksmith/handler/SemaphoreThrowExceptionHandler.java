@@ -1,6 +1,7 @@
 package in.riido.locksmith.handler;
 
 import in.riido.locksmith.exception.SemaphoreNotAcquiredException;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A {@link SemaphoreSkipHandler} that throws {@link SemaphoreNotAcquiredException} when a semaphore
@@ -16,7 +17,7 @@ public class SemaphoreThrowExceptionHandler implements SemaphoreSkipHandler {
   public SemaphoreThrowExceptionHandler() {}
 
   @Override
-  public Object handle(SemaphoreContext context) {
+  public Object handle(@NonNull SemaphoreContext context) {
     throw new SemaphoreNotAcquiredException(context.semaphoreKey(), context.methodName());
   }
 }

@@ -1,5 +1,8 @@
 package in.riido.locksmith.handler;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
 /**
  * A {@link SemaphoreSkipHandler} that returns default values when a semaphore permit cannot be
  * acquired.
@@ -21,7 +24,8 @@ public class SemaphoreReturnDefaultHandler implements SemaphoreSkipHandler {
   public SemaphoreReturnDefaultHandler() {}
 
   @Override
-  public Object handle(SemaphoreContext context) {
+  @Nullable
+  public Object handle(@NonNull SemaphoreContext context) {
     Class<?> returnType = context.returnType();
     if (returnType == void.class || returnType == Void.class) return null;
     if (returnType == boolean.class || returnType == Boolean.class) return false;

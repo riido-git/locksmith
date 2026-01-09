@@ -1,6 +1,7 @@
 package in.riido.locksmith.handler;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
+import org.jspecify.annotations.NonNull;
 
 /**
  * A {@link LockSkipHandler} that throws {@link LockNotAcquiredException} when a lock cannot be
@@ -15,7 +16,7 @@ public class ThrowExceptionHandler implements LockSkipHandler {
   public ThrowExceptionHandler() {}
 
   @Override
-  public Object handle(LockContext context) {
+  public Object handle(@NonNull LockContext context) {
     throw new LockNotAcquiredException(context.lockKey(), context.methodName());
   }
 }

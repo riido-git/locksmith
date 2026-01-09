@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -1823,7 +1824,7 @@ class DistributedLockAspectTest {
   /** Test handler that returns a specific fallback value. */
   public static class FallbackValueHandler implements LockSkipHandler {
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       return "fallback-value";
     }
   }
@@ -1833,7 +1834,7 @@ class DistributedLockAspectTest {
     public static LockContext capturedContext;
 
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       capturedContext = context;
       return null;
     }
@@ -1846,7 +1847,7 @@ class DistributedLockAspectTest {
     }
 
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       return null;
     }
   }

@@ -19,6 +19,8 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.redisson.api.RBucket;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
@@ -63,7 +65,8 @@ public class DistributedSemaphoreAspect {
    * @param redissonClient the Redisson client for Redis operations
    * @param properties the configuration properties
    */
-  public DistributedSemaphoreAspect(RedissonClient redissonClient, LocksmithProperties properties) {
+  public DistributedSemaphoreAspect(
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
     this.redissonClient = redissonClient;
     this.semaphoreProperties = properties.semaphore();
   }
@@ -76,7 +79,9 @@ public class DistributedSemaphoreAspect {
    * @throws Throwable if the method execution throws an exception
    */
   @Around("@annotation(in.riido.locksmith.DistributedSemaphore)")
-  public Object handleDistributedSemaphore(ProceedingJoinPoint joinPoint) throws Throwable {
+  @Nullable
+  public Object handleDistributedSemaphore(@NonNull ProceedingJoinPoint joinPoint)
+      throws Throwable {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedSemaphore annotation =
         signature.getMethod().getAnnotation(DistributedSemaphore.class);
@@ -189,7 +194,8 @@ public class DistributedSemaphoreAspect {
    * Validates that the same semaphore key is not used with different permits values within this
    * codebase.
    */
-  private void validatePermitsConsistency(String semaphoreKey, int permits, String methodName) {
+  private void validatePermitsConsistency(
+      @NonNull String semaphoreKey, int permits, @NonNull String methodName) {
     Integer existingPermits = keyToPermits.putIfAbsent(semaphoreKey, permits);
     if (existingPermits != null && existingPermits != permits) {
       throw new SemaphoreConfigurationException(
@@ -205,7 +211,7 @@ public class DistributedSemaphoreAspect {
    * Ensures the semaphore is initialized in Redis with the configured permits. Uses metadata
    * storage to detect and warn about permit mismatches across deployments.
    */
-  private void ensureSemaphoreInitialized(String semaphoreKey, int permits) {
+  private void ensureSemaphoreInitialized(@NonNull String semaphoreKey, int permits) {
     if (initializedKeys.containsKey(semaphoreKey)) {
       return; // Already initialized by this JVM
     }
@@ -259,11 +265,12 @@ public class DistributedSemaphoreAspect {
    *
    * @return the permit ID if acquired, null otherwise
    */
+  @Nullable
   private String tryAcquirePermit(
-      RPermitExpirableSemaphore semaphore,
-      AcquisitionMode mode,
-      Duration waitTime,
-      Duration leaseTime)
+      @NonNull RPermitExpirableSemaphore semaphore,
+      @NonNull AcquisitionMode mode,
+      @NonNull Duration waitTime,
+      @NonNull Duration leaseTime)
       throws InterruptedException {
     final long leaseTimeMs = leaseTime.toMillis();
     final long waitTimeMs = waitTime.toMillis();
@@ -275,10 +282,10 @@ public class DistributedSemaphoreAspect {
   }
 
   private void releasePermit(
-      RPermitExpirableSemaphore semaphore,
-      String permitId,
-      String semaphoreKey,
-      String methodName) {
+      @NonNull RPermitExpirableSemaphore semaphore,
+      @NonNull String permitId,
+      @NonNull String semaphoreKey,
+      @NonNull String methodName) {
     try {
       semaphore.release(permitId);
       LOG.info("Permit [{}] released from [{}] for [{}]", permitId, semaphoreKey, methodName);
@@ -302,11 +309,11 @@ public class DistributedSemaphoreAspect {
   }
 
   private void checkLeaseExpiration(
-      LeaseExpirationBehavior behavior,
-      Duration leaseTime,
+      @NonNull LeaseExpirationBehavior behavior,
+      @NonNull Duration leaseTime,
       long executionTimeMs,
-      String semaphoreKey,
-      String methodName) {
+      @NonNull String semaphoreKey,
+      @NonNull String methodName) {
 
     final long leaseTimeMs = leaseTime.toMillis();
 
@@ -333,13 +340,15 @@ public class DistributedSemaphoreAspect {
     }
   }
 
-  private String formatMethodSignature(ProceedingJoinPoint joinPoint) {
+  @NonNull
+  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
 
+  @NonNull
   private SemaphoreSkipHandler getHandlerInstance(
-      Class<? extends SemaphoreSkipHandler> handlerClass) {
+      @NonNull Class<? extends SemaphoreSkipHandler> handlerClass) {
     return HANDLER_CACHE.computeIfAbsent(
         handlerClass,
         clazz -> {
@@ -355,11 +364,12 @@ public class DistributedSemaphoreAspect {
         });
   }
 
+  @Nullable
   private Object handleSkip(
-      DistributedSemaphore annotation,
-      ProceedingJoinPoint joinPoint,
-      String semaphoreKey,
-      String methodName) {
+      @NonNull DistributedSemaphore annotation,
+      @NonNull ProceedingJoinPoint joinPoint,
+      @NonNull String semaphoreKey,
+      @NonNull String methodName) {
     final SemaphoreSkipHandler handler = getHandlerInstance(annotation.skipHandler());
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final SemaphoreContext context =

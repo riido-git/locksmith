@@ -4,7 +4,7 @@
  * <p>This package contains the AspectJ aspect that intercepts methods annotated with {@link
  * in.riido.locksmith.DistributedLock} and handles the lock acquisition/release lifecycle.
  *
- * <p>The aspect is automatically registered by the auto-configuration when a {@link
+ * <p>The aspect is automatically registered by the autoconfiguration when a {@link
  * org.redisson.api.RedissonClient} bean is available.
  *
  * @author Garvit Joshi

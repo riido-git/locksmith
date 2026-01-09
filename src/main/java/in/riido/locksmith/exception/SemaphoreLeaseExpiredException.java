@@ -1,6 +1,7 @@
 package in.riido.locksmith.exception;
 
 import java.io.Serial;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Exception thrown when a method's execution time exceeds the configured semaphore permit lease
@@ -38,7 +39,10 @@ public class SemaphoreLeaseExpiredException extends RuntimeException {
    * @param executionTimeMs the actual execution time in milliseconds
    */
   public SemaphoreLeaseExpiredException(
-      String semaphoreKey, String methodName, long leaseTimeMs, long executionTimeMs) {
+      @NonNull String semaphoreKey,
+      @NonNull String methodName,
+      long leaseTimeMs,
+      long executionTimeMs) {
     super(
         String.format(
             "Semaphore [%s] permit lease expired during execution of [%s]. "
@@ -56,6 +60,7 @@ public class SemaphoreLeaseExpiredException extends RuntimeException {
    *
    * @return the semaphore key
    */
+  @NonNull
   public String getSemaphoreKey() {
     return semaphoreKey;
   }
@@ -65,6 +70,7 @@ public class SemaphoreLeaseExpiredException extends RuntimeException {
    *
    * @return the method name
    */
+  @NonNull
   public String getMethodName() {
     return methodName;
   }

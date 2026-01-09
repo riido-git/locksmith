@@ -2,6 +2,7 @@ package in.riido.locksmith.handler;
 
 import java.lang.reflect.Method;
 import java.util.Objects;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Provides contextual information about a semaphore permit acquisition attempt.
@@ -18,7 +19,11 @@ import java.util.Objects;
  * @since 2.0.0
  */
 public record SemaphoreContext(
-    String semaphoreKey, String methodName, Method method, Object[] args, Class<?> returnType) {
+    @NonNull String semaphoreKey,
+    @NonNull String methodName,
+    @NonNull Method method,
+    @NonNull Object[] args,
+    @NonNull Class<?> returnType) {
 
   /**
    * Compact constructor that validates all parameters are non-null.

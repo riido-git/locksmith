@@ -1,5 +1,8 @@
 package in.riido.locksmith.handler;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
 /**
  * Interface for handling semaphore permit acquisition failures with custom logic.
  *
@@ -60,5 +63,5 @@ public interface SemaphoreSkipHandler {
    * @return the value to return from the method, must be compatible with the method's return type
    * @throws RuntimeException implementations may throw exceptions to indicate failure
    */
-  Object handle(SemaphoreContext context);
+  @Nullable Object handle(@NonNull SemaphoreContext context);
 }

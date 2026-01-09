@@ -1,6 +1,7 @@
 package in.riido.locksmith.exception;
 
 import java.io.Serial;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Exception thrown when a distributed lock cannot be acquired within the configured time.
@@ -33,7 +34,7 @@ public class LockNotAcquiredException extends RuntimeException {
    * @param lockKey the Redis key of the lock that could not be acquired
    * @param methodName the name of the method that required the lock
    */
-  public LockNotAcquiredException(String lockKey, String methodName) {
+  public LockNotAcquiredException(@NonNull String lockKey, @NonNull String methodName) {
     super(
         String.format(
             "Failed to acquire distributed lock [%s] for method [%s]. "
@@ -48,6 +49,7 @@ public class LockNotAcquiredException extends RuntimeException {
    *
    * @return the lock key
    */
+  @NonNull
   public String getLockKey() {
     return lockKey;
   }
@@ -57,6 +59,7 @@ public class LockNotAcquiredException extends RuntimeException {
    *
    * @return the method name
    */
+  @NonNull
   public String getMethodName() {
     return methodName;
   }

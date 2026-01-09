@@ -1,5 +1,7 @@
 package in.riido.locksmith.exception;
 
+import org.jspecify.annotations.NonNull;
+
 /**
  * Exception thrown when a method's execution time exceeds the configured lease duration.
  *
@@ -35,7 +37,7 @@ public class LeaseExpiredException extends RuntimeException {
    * @param executionTimeMs the actual execution time in milliseconds
    */
   public LeaseExpiredException(
-      String lockKey, String methodName, long leaseTimeMs, long executionTimeMs) {
+      @NonNull String lockKey, @NonNull String methodName, long leaseTimeMs, long executionTimeMs) {
     super(
         String.format(
             "Lock [%s] lease expired during execution of [%s]. "
@@ -53,6 +55,7 @@ public class LeaseExpiredException extends RuntimeException {
    *
    * @return the lock key
    */
+  @NonNull
   public String getLockKey() {
     return lockKey;
   }
@@ -62,6 +65,7 @@ public class LeaseExpiredException extends RuntimeException {
    *
    * @return the method name
    */
+  @NonNull
   public String getMethodName() {
     return methodName;
   }

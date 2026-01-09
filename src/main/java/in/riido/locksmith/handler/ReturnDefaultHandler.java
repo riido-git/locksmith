@@ -1,5 +1,8 @@
 package in.riido.locksmith.handler;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
 /**
  * A {@link LockSkipHandler} that returns default values when a lock cannot be acquired.
  *
@@ -20,7 +23,8 @@ public class ReturnDefaultHandler implements LockSkipHandler {
   public ReturnDefaultHandler() {}
 
   @Override
-  public Object handle(LockContext context) {
+  @Nullable
+  public Object handle(@NonNull LockContext context) {
     Class<?> returnType = context.returnType();
     if (returnType == void.class || returnType == Void.class) return null;
     if (returnType == boolean.class || returnType == Boolean.class) return false;

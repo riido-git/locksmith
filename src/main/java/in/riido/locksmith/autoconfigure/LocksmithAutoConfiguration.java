@@ -2,6 +2,7 @@ package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
+import org.jspecify.annotations.NonNull;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,8 +64,9 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @NonNull
   public DistributedLockAspect distributedLockAspect(
-      RedissonClient redissonClient, LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
@@ -85,8 +87,9 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @NonNull
   public DistributedSemaphoreAspect distributedSemaphoreAspect(
-      RedissonClient redissonClient, LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(

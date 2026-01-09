@@ -19,6 +19,8 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
@@ -53,7 +55,8 @@ public class DistributedLockAspect {
    * @param redissonClient the Redisson client for Redis operations
    * @param properties the configuration properties
    */
-  public DistributedLockAspect(RedissonClient redissonClient, LocksmithProperties properties) {
+  public DistributedLockAspect(
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
     this.redissonClient = redissonClient;
     this.lockProperties = properties.lock();
   }
@@ -66,7 +69,8 @@ public class DistributedLockAspect {
    * @throws Throwable if the method execution throws an exception
    */
   @Around("@annotation(in.riido.locksmith.DistributedLock)")
-  public Object handleDistributedLock(ProceedingJoinPoint joinPoint) throws Throwable {
+  @Nullable
+  public Object handleDistributedLock(@NonNull ProceedingJoinPoint joinPoint) throws Throwable {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedLock distributedLock =
         signature.getMethod().getAnnotation(DistributedLock.class);
@@ -192,11 +196,11 @@ public class DistributedLockAspect {
    * @param methodName the method name
    */
   private void checkLeaseExpiration(
-      LeaseExpirationBehavior behavior,
-      Duration leaseTime,
+      @NonNull LeaseExpirationBehavior behavior,
+      @NonNull Duration leaseTime,
       long executionTimeMs,
-      String lockKey,
-      String methodName) {
+      @NonNull String lockKey,
+      @NonNull String methodName) {
 
     final long leaseTimeMs = leaseTime.toMillis();
 
@@ -222,7 +226,8 @@ public class DistributedLockAspect {
     }
   }
 
-  private void releaseLock(RLock lock, String lockKey, String methodName) {
+  private void releaseLock(
+      @NonNull RLock lock, @NonNull String lockKey, @NonNull String methodName) {
     try {
       lock.unlock();
       LOG.info("Lock [{}] released for [{}]", lockKey, methodName);
@@ -243,7 +248,8 @@ public class DistributedLockAspect {
    * @param lockType the type of lock to acquire
    * @return the appropriate RLock instance
    */
-  private RLock getLock(String lockKey, LockType lockType) {
+  @NonNull
+  private RLock getLock(@NonNull String lockKey, @NonNull LockType lockType) {
     return switch (lockType) {
       case REENTRANT -> redissonClient.getLock(lockKey);
       case READ -> redissonClient.getReadWriteLock(lockKey).readLock();
@@ -252,7 +258,10 @@ public class DistributedLockAspect {
   }
 
   private boolean tryAcquireLock(
-      RLock lock, AcquisitionMode mode, Duration waitTime, Duration leaseTime)
+      @NonNull RLock lock,
+      @NonNull AcquisitionMode mode,
+      @NonNull Duration waitTime,
+      @NonNull Duration leaseTime)
       throws InterruptedException {
     final long leaseTimeMs = leaseTime.toMillis();
     final long waitTimeMs = waitTime.toMillis();
@@ -262,7 +271,8 @@ public class DistributedLockAspect {
     };
   }
 
-  private String formatMethodSignature(ProceedingJoinPoint joinPoint) {
+  @NonNull
+  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
@@ -281,7 +291,9 @@ public class DistributedLockAspect {
    * @return a cached or newly created instance of the handler
    * @throws IllegalStateException if the handler cannot be instantiated
    */
-  private LockSkipHandler getHandlerInstance(Class<? extends LockSkipHandler> handlerClass) {
+  @NonNull
+  private LockSkipHandler getHandlerInstance(
+      @NonNull Class<? extends LockSkipHandler> handlerClass) {
     return HANDLER_CACHE.computeIfAbsent(
         handlerClass,
         clazz -> {
@@ -297,11 +309,12 @@ public class DistributedLockAspect {
         });
   }
 
+  @Nullable
   private Object handleSkip(
-      DistributedLock annotation,
-      ProceedingJoinPoint joinPoint,
-      String lockKey,
-      String methodName) {
+      @NonNull DistributedLock annotation,
+      @NonNull ProceedingJoinPoint joinPoint,
+      @NonNull String lockKey,
+      @NonNull String methodName) {
     final LockSkipHandler handler = getHandlerInstance(annotation.skipHandler());
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final LockContext context =

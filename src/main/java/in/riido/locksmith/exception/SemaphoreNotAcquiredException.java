@@ -1,6 +1,7 @@
 package in.riido.locksmith.exception;
 
 import java.io.Serial;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Exception thrown when a distributed semaphore permit cannot be acquired within the configured
@@ -34,7 +35,7 @@ public class SemaphoreNotAcquiredException extends RuntimeException {
    * @param semaphoreKey the Redis key of the semaphore that could not acquire a permit
    * @param methodName the name of the method that required the permit
    */
-  public SemaphoreNotAcquiredException(String semaphoreKey, String methodName) {
+  public SemaphoreNotAcquiredException(@NonNull String semaphoreKey, @NonNull String methodName) {
     super(
         String.format(
             "Failed to acquire permit from semaphore [%s] for method [%s]. "
@@ -49,6 +50,7 @@ public class SemaphoreNotAcquiredException extends RuntimeException {
    *
    * @return the semaphore key
    */
+  @NonNull
   public String getSemaphoreKey() {
     return semaphoreKey;
   }
@@ -58,6 +60,7 @@ public class SemaphoreNotAcquiredException extends RuntimeException {
    *
    * @return the method name
    */
+  @NonNull
   public String getMethodName() {
     return methodName;
   }
