@@ -19,7 +19,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class SemaphoreConfigurationException extends RuntimeException {
 
-  @Serial private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = -1204260811123453780L;
 
   /** The semaphore key with configuration issues. */
   private final String semaphoreKey;

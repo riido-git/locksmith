@@ -21,7 +21,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class SemaphoreNotAcquiredException extends RuntimeException {
 
-  @Serial private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = -91156789012345670L;
 
   /** The Redis key of the semaphore that could not acquire a permit. */
   private final String semaphoreKey;

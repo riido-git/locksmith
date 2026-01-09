@@ -16,7 +16,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class SemaphoreLeaseExpiredException extends RuntimeException {
 
-  @Serial private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 1531109849210987651L;
 
   /** The Redis key of the semaphore whose permit expired. */
   private final String semaphoreKey;

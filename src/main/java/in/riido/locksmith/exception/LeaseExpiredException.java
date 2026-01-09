@@ -1,5 +1,6 @@
 package in.riido.locksmith.exception;
 
+import java.io.Serial;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -14,7 +15,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class LeaseExpiredException extends RuntimeException {
 
-  @java.io.Serial private static final long serialVersionUID = 1L;
+  @Serial private static final long serialVersionUID = 6423605121456789012L;
 
   /** The Redis key of the lock that expired. */
   private final String lockKey;
