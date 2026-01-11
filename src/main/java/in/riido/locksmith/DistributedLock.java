@@ -2,7 +2,8 @@ package in.riido.locksmith;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
 import in.riido.locksmith.handler.LockSkipHandler;
-import in.riido.locksmith.handler.ThrowExceptionHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockThrowExceptionHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -16,9 +17,8 @@ import java.lang.annotation.Target;
  * <p>When the lock cannot be acquired, the behavior is controlled by {@link #skipHandler()}:
  *
  * <ul>
- *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
- *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null for objects, default
- *       values for primitives
+ *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+ *   <li>{@link LockReturnDefaultHandler}: Returns null for objects, default values for primitives
  * </ul>
  *
  * <p>Usage examples:
@@ -135,8 +135,8 @@ public @interface DistributedLock {
    * <p>The handler must have a public no-argument constructor. Built-in handlers:
    *
    * <ul>
-   *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
-   *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null/default values
+   *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+   *   <li>{@link LockReturnDefaultHandler}: Returns null/default values
    * </ul>
    *
    * <p>Example custom handler:
@@ -157,7 +157,7 @@ public @interface DistributedLock {
    * @return the skip handler class, defaults to ThrowExceptionHandler
    * @see LockSkipHandler
    */
-  Class<? extends LockSkipHandler> skipHandler() default ThrowExceptionHandler.class;
+  Class<? extends LockSkipHandler> skipHandler() default LockThrowExceptionHandler.class;
 
   /**
    * Defines the behavior when method execution time exceeds the configured lease duration.

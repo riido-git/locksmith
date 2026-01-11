@@ -5,7 +5,7 @@
  *
  * <ul>
  *   <li>{@link in.riido.locksmith.exception.LockNotAcquiredException} - Thrown when a lock cannot
- *       be acquired and {@link in.riido.locksmith.handler.ThrowExceptionHandler} is used
+ *       be acquired and {@link in.riido.locksmith.handler.lock.LockThrowExceptionHandler} is used
  *   <li>{@link in.riido.locksmith.exception.LeaseExpiredException} - Thrown when method execution
  *       exceeds the configured lease time
  * </ul>

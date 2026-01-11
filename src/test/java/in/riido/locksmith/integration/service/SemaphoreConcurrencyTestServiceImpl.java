@@ -2,7 +2,7 @@ package in.riido.locksmith.integration.service;
 
 import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedSemaphore;
-import in.riido.locksmith.handler.SemaphoreReturnDefaultHandler;
+import in.riido.locksmith.handler.semaphore.SemaphoreReturnDefaultHandler;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;

@@ -1,11 +1,12 @@
-package in.riido.locksmith.handler;
+package in.riido.locksmith.handler.lock;
 
+import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.models.LockContext;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A {@link SemaphoreSkipHandler} that returns default values when a semaphore permit cannot be
- * acquired.
+ * A {@link LockSkipHandler} that returns default values when a lock cannot be acquired.
  *
  * <ul>
  *   <li>Returns {@code null} for object types and {@code void}/{@code Void}
@@ -16,16 +17,16 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * @author Garvit Joshi
- * @since 2.0.0
+ * @since 1.2.0
  */
-public class SemaphoreReturnDefaultHandler implements SemaphoreSkipHandler {
+public class LockReturnDefaultHandler implements LockSkipHandler {
 
   /** Default constructor. */
-  public SemaphoreReturnDefaultHandler() {}
+  public LockReturnDefaultHandler() {}
 
   @Override
   @Nullable
-  public Object handle(@NonNull SemaphoreContext context) {
+  public Object handle(@NonNull LockContext context) {
     Class<?> returnType = context.returnType();
     if (returnType == void.class || returnType == Void.class) return null;
     if (returnType == boolean.class || returnType == Boolean.class) return false;

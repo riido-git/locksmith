@@ -1,5 +1,6 @@
-package in.riido.locksmith.handler;
+package in.riido.locksmith.models;
 
+import in.riido.locksmith.handler.LockSkipHandler;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;

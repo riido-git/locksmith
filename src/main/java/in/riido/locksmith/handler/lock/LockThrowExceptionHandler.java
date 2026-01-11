@@ -1,6 +1,8 @@
-package in.riido.locksmith.handler;
+package in.riido.locksmith.handler.lock;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
+import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.models.LockContext;
 import org.jspecify.annotations.NonNull;
 
 /**
@@ -10,10 +12,10 @@ import org.jspecify.annotations.NonNull;
  * @author Garvit Joshi
  * @since 1.2.0
  */
-public class ThrowExceptionHandler implements LockSkipHandler {
+public class LockThrowExceptionHandler implements LockSkipHandler {
 
   /** Default constructor. */
-  public ThrowExceptionHandler() {}
+  public LockThrowExceptionHandler() {}
 
   @Override
   public Object handle(@NonNull LockContext context) {

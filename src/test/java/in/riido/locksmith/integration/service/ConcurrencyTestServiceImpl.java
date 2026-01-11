@@ -3,7 +3,7 @@ package in.riido.locksmith.integration.service;
 import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LockType;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,7 +28,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   }
 
   @Override
-  @DistributedLock(key = "contention-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "contention-lock", skipHandler = LockReturnDefaultHandler.class)
   public boolean contentionTestMethod(
       AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
@@ -45,7 +45,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   }
 
   @Override
-  @DistributedLock(key = "single-exec-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "single-exec-lock", skipHandler = LockReturnDefaultHandler.class)
   public void singleExecutionMethod(AtomicInteger executionCount) {
     executionCount.incrementAndGet();
     try {
@@ -56,7 +56,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   }
 
   @Override
-  @DistributedLock(key = "counter-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "counter-lock", skipHandler = LockReturnDefaultHandler.class)
   public boolean incrementCounter(AtomicInteger counter) {
     counter.incrementAndGet();
     return true;
@@ -77,7 +77,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   @DistributedLock(
       key = "rw-concurrent",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void readOperation(AtomicInteger currentReaders, AtomicInteger maxConcurrentReaders) {
     int current = currentReaders.incrementAndGet();
     maxConcurrentReaders.updateAndGet(max -> Math.max(max, current));
@@ -93,7 +93,7 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   @DistributedLock(
       key = "rw-block-test",
       type = LockType.WRITE,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void writeOperation(AtomicBoolean writerActive, CountDownLatch started) {
     writerActive.set(true);
     started.countDown();
@@ -109,13 +109,13 @@ public class ConcurrencyTestServiceImpl implements ConcurrencyTestService {
   @DistributedLock(
       key = "rw-block-test",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public boolean readDuringWrite() {
     return true;
   }
 
   @Override
-  @DistributedLock(key = "#{#key}", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "#{#key}", skipHandler = LockReturnDefaultHandler.class)
   public void isolatedLockMethod(
       String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions) {
     int current = concurrentExecutions.incrementAndGet();

@@ -1,5 +1,6 @@
 package in.riido.locksmith.handler;
 
+import in.riido.locksmith.models.SemaphoreContext;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 

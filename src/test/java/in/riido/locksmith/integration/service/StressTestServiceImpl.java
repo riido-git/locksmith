@@ -2,13 +2,13 @@ package in.riido.locksmith.integration.service;
 
 import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
 
 /** Test service implementation for stress and performance tests. */
 public class StressTestServiceImpl implements StressTestService {
 
   @Override
-  @DistributedLock(key = "high-volume", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "high-volume", skipHandler = LockReturnDefaultHandler.class)
   public boolean highVolumeMethod() {
     return true;
   }
@@ -44,7 +44,7 @@ public class StressTestServiceImpl implements StressTestService {
   }
 
   @Override
-  @DistributedLock(key = "exception-test", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "exception-test", skipHandler = LockReturnDefaultHandler.class)
   public boolean lockAfterExceptionMethod() {
     return true;
   }

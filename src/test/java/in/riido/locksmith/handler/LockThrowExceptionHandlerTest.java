@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
+import in.riido.locksmith.handler.lock.LockThrowExceptionHandler;
+import in.riido.locksmith.models.LockContext;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,14 +13,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 @DisplayName("ThrowExceptionHandler Tests")
-class ThrowExceptionHandlerTest {
+class LockThrowExceptionHandlerTest {
 
-  private ThrowExceptionHandler handler;
+  private LockThrowExceptionHandler handler;
   private Method mockMethod;
 
   @BeforeEach
   void setUp() {
-    handler = new ThrowExceptionHandler();
+    handler = new LockThrowExceptionHandler();
     mockMethod = mock(Method.class);
   }
 
@@ -143,7 +145,7 @@ class ThrowExceptionHandlerTest {
     @Test
     @DisplayName("Should be instantiable with no-arg constructor")
     void shouldBeInstantiableWithNoArgConstructor() {
-      ThrowExceptionHandler handler = new ThrowExceptionHandler();
+      LockThrowExceptionHandler handler = new LockThrowExceptionHandler();
 
       assertNotNull(handler);
     }
@@ -151,14 +153,14 @@ class ThrowExceptionHandlerTest {
     @Test
     @DisplayName("Should implement LockSkipHandler interface")
     void shouldImplementLockSkipHandlerInterface() {
-      assertTrue(LockSkipHandler.class.isAssignableFrom(ThrowExceptionHandler.class));
+      assertTrue(LockSkipHandler.class.isAssignableFrom(LockThrowExceptionHandler.class));
     }
 
     @Test
     @DisplayName("Should be instantiable via reflection")
     void shouldBeInstantiableViaReflection() throws Exception {
-      ThrowExceptionHandler handler =
-          ThrowExceptionHandler.class.getDeclaredConstructor().newInstance();
+      LockThrowExceptionHandler handler =
+          LockThrowExceptionHandler.class.getDeclaredConstructor().newInstance();
 
       assertNotNull(handler);
     }

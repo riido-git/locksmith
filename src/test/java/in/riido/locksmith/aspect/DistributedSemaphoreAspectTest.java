@@ -11,8 +11,9 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.exception.SemaphoreLeaseExpiredException;
 import in.riido.locksmith.exception.SemaphoreNotAcquiredException;
-import in.riido.locksmith.handler.SemaphoreReturnDefaultHandler;
-import in.riido.locksmith.handler.SemaphoreThrowExceptionHandler;
+import in.riido.locksmith.handler.semaphore.SemaphoreReturnDefaultHandler;
+import in.riido.locksmith.handler.semaphore.SemaphoreThrowExceptionHandler;
+import in.riido.locksmith.models.SemaphoreContext;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -333,7 +334,7 @@ class DistributedSemaphoreAspectTest {
           SemaphoreNotAcquiredException.class,
           () ->
               handler.handle(
-                  new in.riido.locksmith.handler.SemaphoreContext(
+                  new SemaphoreContext(
                       "test-key", "TestClass.testMethod", method, new Object[] {}, String.class)));
     }
 
@@ -345,7 +346,7 @@ class DistributedSemaphoreAspectTest {
 
       Object result =
           handler.handle(
-              new in.riido.locksmith.handler.SemaphoreContext(
+              new SemaphoreContext(
                   "test-key", "TestClass.testMethod", method, new Object[] {}, String.class));
 
       assertNull(result);
@@ -359,7 +360,7 @@ class DistributedSemaphoreAspectTest {
 
       Object result =
           handler.handle(
-              new in.riido.locksmith.handler.SemaphoreContext(
+              new SemaphoreContext(
                   "test-key", "TestClass.testMethod", method, new Object[] {}, boolean.class));
 
       assertEquals(false, result);
@@ -373,7 +374,7 @@ class DistributedSemaphoreAspectTest {
 
       Object result =
           handler.handle(
-              new in.riido.locksmith.handler.SemaphoreContext(
+              new SemaphoreContext(
                   "test-key", "TestClass.testMethod", method, new Object[] {}, int.class));
 
       assertEquals(0, result);
@@ -387,7 +388,7 @@ class DistributedSemaphoreAspectTest {
 
       Object result =
           handler.handle(
-              new in.riido.locksmith.handler.SemaphoreContext(
+              new SemaphoreContext(
                   "test-key", "TestClass.testMethod", method, new Object[] {}, long.class));
 
       assertEquals(0L, result);

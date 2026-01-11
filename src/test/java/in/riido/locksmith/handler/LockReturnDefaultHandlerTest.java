@@ -3,6 +3,8 @@ package in.riido.locksmith.handler;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
+import in.riido.locksmith.models.LockContext;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,14 +12,14 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 @DisplayName("ReturnDefaultHandler Tests")
-class ReturnDefaultHandlerTest {
+class LockReturnDefaultHandlerTest {
 
-  private ReturnDefaultHandler handler;
+  private LockReturnDefaultHandler handler;
   private Method mockMethod;
 
   @BeforeEach
   void setUp() {
-    handler = new ReturnDefaultHandler();
+    handler = new LockReturnDefaultHandler();
     mockMethod = mock(Method.class);
   }
 
@@ -313,7 +315,7 @@ class ReturnDefaultHandlerTest {
     @Test
     @DisplayName("Should be instantiable with no-arg constructor")
     void shouldBeInstantiableWithNoArgConstructor() {
-      ReturnDefaultHandler handler = new ReturnDefaultHandler();
+      LockReturnDefaultHandler handler = new LockReturnDefaultHandler();
 
       assertNotNull(handler);
     }
@@ -321,7 +323,7 @@ class ReturnDefaultHandlerTest {
     @Test
     @DisplayName("Should implement LockSkipHandler interface")
     void shouldImplementLockSkipHandlerInterface() {
-      assertTrue(LockSkipHandler.class.isAssignableFrom(ReturnDefaultHandler.class));
+      assertTrue(LockSkipHandler.class.isAssignableFrom(LockReturnDefaultHandler.class));
     }
   }
 

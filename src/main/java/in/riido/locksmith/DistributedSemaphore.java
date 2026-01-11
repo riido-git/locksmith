@@ -2,7 +2,8 @@ package in.riido.locksmith;
 
 import in.riido.locksmith.exception.SemaphoreNotAcquiredException;
 import in.riido.locksmith.handler.SemaphoreSkipHandler;
-import in.riido.locksmith.handler.SemaphoreThrowExceptionHandler;
+import in.riido.locksmith.handler.semaphore.SemaphoreReturnDefaultHandler;
+import in.riido.locksmith.handler.semaphore.SemaphoreThrowExceptionHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -27,8 +28,8 @@ import java.lang.annotation.Target;
  * <ul>
  *   <li>{@link SemaphoreThrowExceptionHandler} (default): Throws {@link
  *       SemaphoreNotAcquiredException}
- *   <li>{@link in.riido.locksmith.handler.SemaphoreReturnDefaultHandler}: Returns null for objects,
- *       default values for primitives
+ *   <li>{@link SemaphoreReturnDefaultHandler}: Returns null for objects, default values for
+ *       primitives
  * </ul>
  *
  * <p>Usage examples:
@@ -155,8 +156,7 @@ public @interface DistributedSemaphore {
    * <ul>
    *   <li>{@link SemaphoreThrowExceptionHandler} (default): Throws {@link
    *       SemaphoreNotAcquiredException}
-   *   <li>{@link in.riido.locksmith.handler.SemaphoreReturnDefaultHandler}: Returns null/default
-   *       values
+   *   <li>{@link SemaphoreReturnDefaultHandler}: Returns null/default values
    * </ul>
    *
    * @return the skip handler class, defaults to SemaphoreThrowExceptionHandler
