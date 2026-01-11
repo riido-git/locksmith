@@ -498,6 +498,14 @@ public class AlertingSemaphoreHandler implements SemaphoreSkipHandler {
 public String rateLimitedMethod() { }
 ```
 
+The `SemaphoreContext` provides:
+- `semaphoreKey()` - The Redis semaphore key
+- `methodName()` - The formatted method name
+- `method()` - The intercepted Method
+- `args()` - The method arguments
+- `returnType()` - The method's return type
+- `permitId()` - The permit ID if one was acquired, null otherwise
+
 Built-in handlers:
 - `SemaphoreThrowExceptionHandler` (default) - Throws `SemaphoreNotAcquiredException`
 - `SemaphoreReturnDefaultHandler` - Returns null/default values

@@ -153,7 +153,7 @@ public class DistributedSemaphoreAspect {
               methodName,
               semaphoreKey);
         }
-        return handleSkip(annotation, joinPoint, semaphoreKey, methodName);
+        return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
       }
 
       LOG.info("Permit [{}] acquired from [{}] for [{}]", permitId, semaphoreKey, methodName);
@@ -182,7 +182,7 @@ public class DistributedSemaphoreAspect {
           "Thread interrupted while waiting for permit from [{}] in [{}]",
           semaphoreKey,
           methodName);
-      return handleSkip(annotation, joinPoint, semaphoreKey, methodName);
+      return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
     } finally {
       if (permitId != null) {
         releasePermit(semaphore, permitId, semaphoreKey, methodName);
@@ -369,7 +369,8 @@ public class DistributedSemaphoreAspect {
       @NonNull DistributedSemaphore annotation,
       @NonNull ProceedingJoinPoint joinPoint,
       @NonNull String semaphoreKey,
-      @NonNull String methodName) {
+      @NonNull String methodName,
+      @Nullable String permitId) {
     final SemaphoreSkipHandler handler = getHandlerInstance(annotation.skipHandler());
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final SemaphoreContext context =
@@ -378,7 +379,8 @@ public class DistributedSemaphoreAspect {
             methodName,
             signature.getMethod(),
             joinPoint.getArgs(),
-            signature.getReturnType());
+            signature.getReturnType(),
+            permitId);
     return handler.handle(context);
   }
 }

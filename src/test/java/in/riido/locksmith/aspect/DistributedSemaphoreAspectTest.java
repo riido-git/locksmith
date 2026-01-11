@@ -335,7 +335,7 @@ class DistributedSemaphoreAspectTest {
           () ->
               handler.handle(
                   new SemaphoreContext(
-                      "test-key", "TestClass.testMethod", method, new Object[] {}, String.class)));
+                      "test-key", "TestClass.testMethod", method, new Object[] {}, String.class, null)));
     }
 
     @Test
@@ -347,7 +347,7 @@ class DistributedSemaphoreAspectTest {
       Object result =
           handler.handle(
               new SemaphoreContext(
-                  "test-key", "TestClass.testMethod", method, new Object[] {}, String.class));
+                  "test-key", "TestClass.testMethod", method, new Object[] {}, String.class, null));
 
       assertNull(result);
     }
@@ -361,7 +361,7 @@ class DistributedSemaphoreAspectTest {
       Object result =
           handler.handle(
               new SemaphoreContext(
-                  "test-key", "TestClass.testMethod", method, new Object[] {}, boolean.class));
+                  "test-key", "TestClass.testMethod", method, new Object[] {}, boolean.class, null));
 
       assertEquals(false, result);
     }
@@ -375,7 +375,7 @@ class DistributedSemaphoreAspectTest {
       Object result =
           handler.handle(
               new SemaphoreContext(
-                  "test-key", "TestClass.testMethod", method, new Object[] {}, int.class));
+                  "test-key", "TestClass.testMethod", method, new Object[] {}, int.class, null));
 
       assertEquals(0, result);
     }
@@ -389,7 +389,7 @@ class DistributedSemaphoreAspectTest {
       Object result =
           handler.handle(
               new SemaphoreContext(
-                  "test-key", "TestClass.testMethod", method, new Object[] {}, long.class));
+                  "test-key", "TestClass.testMethod", method, new Object[] {}, long.class, null));
 
       assertEquals(0L, result);
     }
