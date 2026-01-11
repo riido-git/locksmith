@@ -1,6 +1,8 @@
 package in.riido.locksmith.models;
 
 import in.riido.locksmith.handler.SemaphoreSkipHandler;
+import java.io.Serial;
+import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
@@ -27,7 +29,10 @@ public record SemaphoreContext(
     @NonNull Method method,
     @NonNull Object[] args,
     @NonNull Class<?> returnType,
-    @Nullable String permitId) {
+    @Nullable String permitId)
+    implements Serializable {
+
+  @Serial private static final long serialVersionUID = 95119891241917453L;
 
   /**
    * Compact constructor that validates all parameters are non-null (except permitId which is

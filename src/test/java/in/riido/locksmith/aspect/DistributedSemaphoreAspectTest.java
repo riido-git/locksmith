@@ -335,7 +335,12 @@ class DistributedSemaphoreAspectTest {
           () ->
               handler.handle(
                   new SemaphoreContext(
-                      "test-key", "TestClass.testMethod", method, new Object[] {}, String.class, null)));
+                      "test-key",
+                      "TestClass.testMethod",
+                      method,
+                      new Object[] {},
+                      String.class,
+                      null)));
     }
 
     @Test
@@ -361,7 +366,12 @@ class DistributedSemaphoreAspectTest {
       Object result =
           handler.handle(
               new SemaphoreContext(
-                  "test-key", "TestClass.testMethod", method, new Object[] {}, boolean.class, null));
+                  "test-key",
+                  "TestClass.testMethod",
+                  method,
+                  new Object[] {},
+                  boolean.class,
+                  null));
 
       assertEquals(false, result);
     }

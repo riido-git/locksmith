@@ -5,7 +5,7 @@
  *
  * <ul>
  *   <li>{@link in.riido.locksmith.autoconfigure.LocksmithAutoConfiguration} - Auto-configures the
- *       distributed lock aspect
+ *       distributed lock and semaphore aspects
  *   <li>{@link in.riido.locksmith.autoconfigure.LocksmithProperties} - Configuration properties
  *       with prefix {@code locksmith.*}
  * </ul>
@@ -13,9 +13,17 @@
  * <h2>Configuration Properties</h2>
  *
  * <pre>{@code
- * locksmith.lease-time-minutes=10
- * locksmith.wait-time-seconds=60
- * locksmith.key-prefix=lock:
+ * locksmith:
+ *   lock:
+ *     lease-time: 10m
+ *     wait-time: 60s
+ *     key-prefix: "lock:"
+ *     debug: false
+ *   semaphore:
+ *     lease-time: 5m
+ *     wait-time: 60s
+ *     key-prefix: "semaphore:"
+ *     debug: false
  * }</pre>
  *
  * @author Garvit Joshi
