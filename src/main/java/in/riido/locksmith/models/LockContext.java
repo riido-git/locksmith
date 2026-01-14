@@ -1,8 +1,6 @@
 package in.riido.locksmith.models;
 
 import in.riido.locksmith.handler.LockSkipHandler;
-import java.io.Serial;
-import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
@@ -26,10 +24,7 @@ public record LockContext(
     @NonNull String methodName,
     @NonNull Method method,
     @NonNull Object[] args,
-    @NonNull Class<?> returnType)
-    implements Serializable {
-
-  @Serial private static final long serialVersionUID = -51131849560487652L;
+    @NonNull Class<?> returnType) {
 
   /**
    * Compact constructor that validates all parameters are non-null.

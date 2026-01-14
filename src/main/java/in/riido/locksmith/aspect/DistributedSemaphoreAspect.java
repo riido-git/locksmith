@@ -210,6 +210,21 @@ public class DistributedSemaphoreAspect {
   /**
    * Ensures the semaphore is initialized in Redis with the configured permits. Uses metadata
    * storage to detect and warn about permit mismatches across deployments.
+   *
+   * <p><b>Race Condition Note:</b> There is a small race window between {@code trySetPermits} and
+   * {@code metaBucket.set} where another instance could read null from the metadata bucket. This is
+   * acceptable because:
+   *
+   * <ul>
+   *   <li>Redisson's {@code trySetPermits} is itself atomic - only one instance will successfully
+   *       create the semaphore
+   *   <li>The metadata is only used for logging warnings about permit mismatches
+   *   <li>Worst case: duplicate "created semaphore" log messages on first initialization
+   *   <li>The semaphore's actual permit count in Redis is always correct
+   * </ul>
+   *
+   * <p>A fully atomic solution would require a Lua script, but the added complexity is not
+   * justified for this edge case that only affects logging during first initialization.
    */
   private void ensureSemaphoreInitialized(@NonNull String semaphoreKey, int permits) {
     if (initializedKeys.containsKey(semaphoreKey)) {

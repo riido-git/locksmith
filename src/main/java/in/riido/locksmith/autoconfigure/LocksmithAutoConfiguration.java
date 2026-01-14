@@ -93,7 +93,7 @@ public class LocksmithAutoConfiguration {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
-        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Lock Properties: {}",
+        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Semaphore Properties: {}",
         springBootVersion,
         redissonVersion,
         properties.semaphore());
