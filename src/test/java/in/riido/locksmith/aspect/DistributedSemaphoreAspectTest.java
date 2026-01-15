@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RBucket;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationContext;
 
 /**
  * Unit tests for DistributedSemaphoreAspect.
@@ -36,6 +37,7 @@ import org.redisson.api.RedissonClient;
 class DistributedSemaphoreAspectTest {
 
   private RedissonClient redissonClient;
+  private ApplicationContext applicationContext;
   private RPermitExpirableSemaphore semaphore;
 
   @SuppressWarnings("rawtypes")
@@ -49,6 +51,7 @@ class DistributedSemaphoreAspectTest {
   @BeforeEach
   void setUp() {
     redissonClient = mock(RedissonClient.class);
+    applicationContext = mock(ApplicationContext.class);
     semaphore = mock(RPermitExpirableSemaphore.class);
     metaBucket = mock(RBucket.class);
 
@@ -57,7 +60,7 @@ class DistributedSemaphoreAspectTest {
             null,
             new SemaphoreProperties(
                 Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false));
-    aspect = new DistributedSemaphoreAspect(redissonClient, properties);
+    aspect = new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
 
     joinPoint = mock(ProceedingJoinPoint.class);
     methodSignature = mock(MethodSignature.class);
@@ -258,7 +261,7 @@ class DistributedSemaphoreAspectTest {
               new SemaphoreProperties(
                   Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false));
       DistributedSemaphoreAspect shortLeaseAspect =
-          new DistributedSemaphoreAspect(redissonClient, shortLeaseProps);
+          new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
 
       assertThrows(
           SemaphoreLeaseExpiredException.class,
@@ -288,7 +291,7 @@ class DistributedSemaphoreAspectTest {
               new SemaphoreProperties(
                   Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false));
       DistributedSemaphoreAspect shortLeaseAspect =
-          new DistributedSemaphoreAspect(redissonClient, shortLeaseProps);
+          new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
 
       // Should not throw
       assertDoesNotThrow(() -> shortLeaseAspect.handleDistributedSemaphore(joinPoint));

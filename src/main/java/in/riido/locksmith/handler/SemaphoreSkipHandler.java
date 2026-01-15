@@ -17,22 +17,46 @@ import org.jspecify.annotations.Nullable;
  *   <li>Executing alternative processing logic
  * </ul>
  *
- * <p>Implementations must have a public no-argument constructor to be instantiated by the aspect.
+ * <p><b>Handler Resolution:</b> Handlers are resolved in the following order:
+ *
+ * <ol>
+ *   <li>Look up as a Spring bean from ApplicationContext by type
+ *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
+ * </ol>
  *
  * <p><b>Thread-Safety Requirement:</b> Implementations must be stateless and thread-safe. Handler
  * instances are cached and reused across all permit acquisition failures. The same handler instance
  * may be invoked concurrently by multiple threads. Do not use instance variables to store state
  * between invocations.
  *
- * <p>Example implementation:
+ * <p>Example Spring bean implementation with dependency injection:
  *
  * <pre>{@code
+ * @Component
  * public class AlertingSemaphoreHandler implements SemaphoreSkipHandler {
+ *     private final AlertService alertService;
+ *
+ *     public AlertingSemaphoreHandler(AlertService alertService) {
+ *         this.alertService = alertService;
+ *     }
  *
  *     @Override
  *     public Object handle(SemaphoreContext context) {
  *         alertService.sendAlert("Permit acquisition failed for: " + context.semaphoreKey());
  *         return null; // or return a fallback value
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>Example simple implementation (no Spring dependencies):
+ *
+ * <pre>{@code
+ * public class LoggingSemaphoreHandler implements SemaphoreSkipHandler {
+ *
+ *     @Override
+ *     public Object handle(SemaphoreContext context) {
+ *         System.out.println("Permit acquisition failed for: " + context.semaphoreKey());
+ *         return null;
  *     }
  * }
  * }</pre>

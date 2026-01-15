@@ -132,25 +132,36 @@ public @interface DistributedLock {
   /**
    * Custom handler for lock acquisition failures.
    *
-   * <p>The handler must have a public no-argument constructor. Built-in handlers:
+   * <p>Handlers can be defined as Spring beans (with dependency injection support) or as plain
+   * classes with a public no-argument constructor. Spring beans are looked up first by type, then
+   * reflection-based instantiation is used as a fallback.
+   *
+   * <p>Built-in handlers:
    *
    * <ul>
    *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
    *   <li>{@link LockReturnDefaultHandler}: Returns null/default values
    * </ul>
    *
-   * <p>Example custom handler:
+   * <p>Example Spring bean handler with dependency injection:
    *
    * <pre>{@code
-   * public class MyCustomHandler implements LockSkipHandler {
+   * @Component
+   * public class AlertingHandler implements LockSkipHandler {
+   *     private final AlertService alertService;
+   *
+   *     public AlertingHandler(AlertService alertService) {
+   *         this.alertService = alertService;
+   *     }
+   *
    *     @Override
    *     public Object handle(LockContext context) {
-   *         log.warn("Lock {} not acquired for {}", context.lockKey(), context.methodName());
+   *         alertService.sendAlert("Lock failed: " + context.lockKey());
    *         return null;
    *     }
    * }
    *
-   * @DistributedLock(key = "my-task", skipHandler = MyCustomHandler.class)
+   * @DistributedLock(key = "my-task", skipHandler = AlertingHandler.class)
    * public void myTask() { }
    * }</pre>
    *

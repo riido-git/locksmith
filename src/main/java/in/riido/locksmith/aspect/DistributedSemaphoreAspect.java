@@ -26,6 +26,9 @@ import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -47,28 +50,34 @@ public class DistributedSemaphoreAspect {
   private static final Logger LOG = LoggerFactory.getLogger(DistributedSemaphoreAspect.class);
   private static final String META_SUFFIX = ":meta";
 
-  private static final Map<Class<? extends SemaphoreSkipHandler>, SemaphoreSkipHandler>
-      HANDLER_CACHE = new ConcurrentHashMap<>(5);
-
   /** Cache to track permits per key within this JVM for consistency validation. */
   private final Map<String, Integer> keyToPermits = new ConcurrentHashMap<>();
 
   /** Cache to track which keys have been initialized in Redis by this JVM. */
   private final Map<String, Boolean> initializedKeys = new ConcurrentHashMap<>();
 
+  /** Cache of handler instances per class type for reuse. */
+  private final Map<Class<? extends SemaphoreSkipHandler>, SemaphoreSkipHandler> handlerCache =
+      new ConcurrentHashMap<>(5);
+
   private final RedissonClient redissonClient;
   private final SemaphoreProperties semaphoreProperties;
+  private final ApplicationContext applicationContext;
 
   /**
    * Constructs a new DistributedSemaphoreAspect.
    *
    * @param redissonClient the Redisson client for Redis operations
    * @param properties the configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
    */
   public DistributedSemaphoreAspect(
-      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
     this.redissonClient = redissonClient;
     this.semaphoreProperties = properties.semaphore();
+    this.applicationContext = applicationContext;
   }
 
   /**
@@ -361,22 +370,100 @@ public class DistributedSemaphoreAspect {
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
 
+  /**
+   * Gets a cached instance of the specified handler class, creating it if necessary.
+   *
+   * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
+   * instantiation on every permit skip. Handler instances are cached per class type and reused
+   * across all invocations.
+   *
+   * <p>Handler resolution follows this order:
+   *
+   * <ol>
+   *   <li>Look up the handler as a Spring bean from ApplicationContext by type
+   *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
+   * </ol>
+   *
+   * <p>This allows handlers to be defined as Spring beans with dependency injection:
+   *
+   * <pre>{@code
+   * @Component
+   * public class AlertingSemaphoreHandler implements SemaphoreSkipHandler {
+   *     private final AlertService alertService;
+   *
+   *     public AlertingSemaphoreHandler(AlertService alertService) {
+   *         this.alertService = alertService;
+   *     }
+   *
+   *     @Override
+   *     public Object handle(SemaphoreContext context) {
+   *         alertService.sendAlert("Permit failed: " + context.semaphoreKey());
+   *         return null;
+   *     }
+   * }
+   * }</pre>
+   *
+   * <p><b>Important:</b> Handler classes must be stateless and thread-safe, as a single instance
+   * will be shared across all concurrent invocations.
+   *
+   * @param handlerClass the handler class to instantiate
+   * @return a cached or newly created instance of the handler
+   * @throws IllegalStateException if the handler cannot be instantiated
+   */
   @NonNull
   private SemaphoreSkipHandler getHandlerInstance(
       @NonNull Class<? extends SemaphoreSkipHandler> handlerClass) {
-    return HANDLER_CACHE.computeIfAbsent(
+    return handlerCache.computeIfAbsent(
         handlerClass,
         clazz -> {
+          // First, try to get the handler as a Spring bean (only if context is active)
+          if (isApplicationContextActive()) {
+            try {
+              SemaphoreSkipHandler bean = applicationContext.getBean(clazz);
+              if (bean != null) {
+                return bean;
+              }
+            } catch (BeansException ignored) {
+              // Bean not found, will fall back to reflection
+            }
+          }else {
+            if (Boolean.TRUE.equals(semaphoreProperties.debug())) {
+              LOG.info(
+                      "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
+                      clazz.getName());
+            }
+          }
+          // Not a Spring bean, fall back to reflection
+          if (Boolean.TRUE.equals(semaphoreProperties.debug())) {
+            LOG.info(
+                "Handler {} not found as Spring bean, falling back to reflection-based instantiation",
+                clazz.getName());
+          }
+
+          // Fall back to reflection-based instantiation
           try {
             return clazz.getDeclaredConstructor().newInstance();
           } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(
                 "Failed to instantiate skip handler: "
                     + clazz.getName()
-                    + ". Ensure it has a public no-argument constructor.",
+                    + ". Ensure it is a Spring bean or has a public no-argument constructor.",
                 e);
           }
         });
+  }
+
+  /**
+   * Checks if the application context is active and can be used for bean lookups.
+   *
+   * @return true if the context is active, false otherwise
+   */
+  private boolean isApplicationContextActive() {
+    if (applicationContext instanceof ConfigurableApplicationContext configurableContext) {
+      return configurableContext.isActive();
+    }
+    // For non-configurable contexts, assume active
+    return true;
   }
 
   @Nullable

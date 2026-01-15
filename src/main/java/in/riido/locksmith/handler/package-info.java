@@ -4,33 +4,43 @@
  * <p>This package provides a pluggable mechanism for handling cases when a distributed lock or
  * semaphore permit cannot be acquired. The key components are:
  *
- * <p><b>Lock Handlers:</b>
+ * <p><b>Handler Interfaces:</b>
  *
  * <ul>
- *   <li>{@link in.riido.locksmith.handler.LockSkipHandler} - The interface for custom lock handlers
- *   <li>{@link in.riido.locksmith.models.LockContext} - Context information passed to lock handlers
- *   <li>{@link in.riido.locksmith.handler.lock.LockThrowExceptionHandler} - Default lock handler
- *       that throws exceptions
- *   <li>{@link in.riido.locksmith.handler.lock.LockReturnDefaultHandler} - Lock handler that
+ *   <li>{@link in.riido.locksmith.handler.LockSkipHandler} - Interface for custom lock handlers
+ *   <li>{@link in.riido.locksmith.handler.SemaphoreSkipHandler} - Interface for custom semaphore
+ *       handlers
+ * </ul>
+ *
+ * <p><b>Lock Handler Implementations:</b> (in {@code handler.lock} subpackage)
+ *
+ * <ul>
+ *   <li>{@link in.riido.locksmith.handler.lock.LockThrowExceptionHandler} - Default handler that
+ *       throws exceptions
+ *   <li>{@link in.riido.locksmith.handler.lock.LockReturnDefaultHandler} - Handler that returns
+ *       default values
+ * </ul>
+ *
+ * <p><b>Semaphore Handler Implementations:</b> (in {@code handler.semaphore} subpackage)
+ *
+ * <ul>
+ *   <li>{@link in.riido.locksmith.handler.semaphore.SemaphoreThrowExceptionHandler} - Default
+ *       handler that throws exceptions
+ *   <li>{@link in.riido.locksmith.handler.semaphore.SemaphoreReturnDefaultHandler} - Handler that
  *       returns default values
  * </ul>
  *
- * <p><b>Semaphore Handlers:</b>
+ * <p><b>Utilities:</b>
  *
  * <ul>
- *   <li>{@link in.riido.locksmith.handler.SemaphoreSkipHandler} - The interface for custom
- *       semaphore handlers
- *   <li>{@link in.riido.locksmith.models.SemaphoreContext} - Context information passed to
- *       semaphore handlers
- *   <li>{@link in.riido.locksmith.handler.semaphore.SemaphoreThrowExceptionHandler} - Default
- *       semaphore handler that throws exceptions
- *   <li>{@link in.riido.locksmith.handler.semaphore.SemaphoreReturnDefaultHandler} - Semaphore
- *       handler that returns default values
+ *   <li>{@link in.riido.locksmith.handler.DefaultValueResolver} - Shared utility for resolving
+ *       default values based on return types
  * </ul>
  *
  * @author Garvit Joshi
  * @since 1.2.0
  * @see in.riido.locksmith.handler.LockSkipHandler
  * @see in.riido.locksmith.handler.SemaphoreSkipHandler
+ * @see in.riido.locksmith.handler.DefaultValueResolver
  */
 package in.riido.locksmith.handler;

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -86,7 +87,7 @@ class LocksmithAutoConfigurationTest {
                     .isSameAs(
                         context
                             .getBean(CustomDistributedLockAspectConfiguration.class)
-                            .customAspect());
+                            .customAspect(context));
               });
     }
   }
@@ -299,8 +300,9 @@ class LocksmithAutoConfigurationTest {
   static class CustomDistributedLockAspectConfiguration {
 
     @Bean
-    DistributedLockAspect customAspect() {
-      return new DistributedLockAspect(mock(RedissonClient.class), LocksmithProperties.defaults());
+    DistributedLockAspect customAspect(ApplicationContext applicationContext) {
+      return new DistributedLockAspect(
+          mock(RedissonClient.class), LocksmithProperties.defaults(), applicationContext);
     }
   }
 }

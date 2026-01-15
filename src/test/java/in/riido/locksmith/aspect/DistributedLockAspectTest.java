@@ -29,11 +29,13 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RReadWriteLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationContext;
 
 @DisplayName("DistributedLockAspect Tests")
 class DistributedLockAspectTest {
 
   private RedissonClient redissonClient;
+  private ApplicationContext applicationContext;
   private DistributedLockAspect aspect;
   private ProceedingJoinPoint joinPoint;
   private MethodSignature methodSignature;
@@ -42,12 +44,13 @@ class DistributedLockAspectTest {
   @BeforeEach
   void setUp() {
     redissonClient = mock(RedissonClient.class);
+    applicationContext = mock(ApplicationContext.class);
     LocksmithProperties lockProperties =
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false),
             null);
-    aspect = new DistributedLockAspect(redissonClient, lockProperties);
+    aspect = new DistributedLockAspect(redissonClient, lockProperties, applicationContext);
     joinPoint = mock(ProceedingJoinPoint.class);
     methodSignature = mock(MethodSignature.class);
     lock = mock(RLock.class);

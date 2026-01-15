@@ -17,22 +17,46 @@ import org.jspecify.annotations.Nullable;
  *   <li>Executing alternative processing logic
  * </ul>
  *
- * <p>Implementations must have a public no-argument constructor to be instantiated by the aspect.
+ * <p><b>Handler Resolution:</b> Handlers are resolved in the following order:
+ *
+ * <ol>
+ *   <li>Look up as a Spring bean from ApplicationContext by type
+ *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
+ * </ol>
  *
  * <p><b>Thread-Safety Requirement:</b> Implementations must be stateless and thread-safe. Handler
  * instances are cached and reused across all lock acquisition failures. The same handler instance
  * may be invoked concurrently by multiple threads. Do not use instance variables to store state
  * between invocations.
  *
- * <p>Example implementation:
+ * <p>Example Spring bean implementation with dependency injection:
  *
  * <pre>{@code
+ * @Component
  * public class AlertingSkipHandler implements LockSkipHandler {
+ *     private final AlertService alertService;
+ *
+ *     public AlertingSkipHandler(AlertService alertService) {
+ *         this.alertService = alertService;
+ *     }
  *
  *     @Override
  *     public Object handle(LockContext context) {
  *         alertService.sendAlert("Lock acquisition failed for: " + context.lockKey());
  *         return null; // or return a fallback value
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>Example simple implementation (no Spring dependencies):
+ *
+ * <pre>{@code
+ * public class LoggingSkipHandler implements LockSkipHandler {
+ *
+ *     @Override
+ *     public Object handle(LockContext context) {
+ *         System.out.println("Lock acquisition failed for: " + context.lockKey());
+ *         return null;
  *     }
  * }
  * }</pre>

@@ -27,6 +27,7 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.context.support.GenericApplicationContext;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -59,7 +60,8 @@ class ConcurrentAccessTest {
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(1), Duration.ofSeconds(30), "concurrent:", false),
             null);
-    DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
+    DistributedLockAspect aspect =
+        new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations
     AspectJProxyFactory factory = new AspectJProxyFactory(new ConcurrencyTestServiceImpl());

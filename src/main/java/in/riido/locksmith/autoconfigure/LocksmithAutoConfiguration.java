@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -60,13 +61,16 @@ public class LocksmithAutoConfiguration {
    *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
    * @return the configured DistributedLockAspect
    */
   @Bean
   @ConditionalOnMissingBean
   @NonNull
   public DistributedLockAspect distributedLockAspect(
-      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
@@ -74,7 +78,7 @@ public class LocksmithAutoConfiguration {
         springBootVersion,
         redissonVersion,
         properties.lock());
-    return new DistributedLockAspect(redissonClient, properties);
+    return new DistributedLockAspect(redissonClient, properties, applicationContext);
   }
 
   /**
@@ -82,6 +86,7 @@ public class LocksmithAutoConfiguration {
    *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
    * @return the configured DistributedSemaphoreAspect
    * @since 2.0.0
    */
@@ -89,7 +94,9 @@ public class LocksmithAutoConfiguration {
   @ConditionalOnMissingBean
   @NonNull
   public DistributedSemaphoreAspect distributedSemaphoreAspect(
-      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
@@ -97,6 +104,6 @@ public class LocksmithAutoConfiguration {
         springBootVersion,
         redissonVersion,
         properties.semaphore());
-    return new DistributedSemaphoreAspect(redissonClient, properties);
+    return new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
   }
 }

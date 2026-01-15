@@ -29,6 +29,7 @@ import org.redisson.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.context.support.GenericApplicationContext;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -68,7 +69,8 @@ class SemaphoreConcurrentAccessTest {
             null,
             new SemaphoreProperties(
                 Duration.ofMinutes(5), Duration.ofSeconds(30), "concurrent:", false));
-    DistributedSemaphoreAspect aspect = new DistributedSemaphoreAspect(redissonClient, properties);
+    DistributedSemaphoreAspect aspect =
+        new DistributedSemaphoreAspect(redissonClient, properties, new GenericApplicationContext());
 
     AspectJProxyFactory factory =
         new AspectJProxyFactory(new SemaphoreConcurrencyTestServiceImpl());

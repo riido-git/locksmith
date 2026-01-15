@@ -31,6 +31,7 @@ import org.redisson.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.context.support.GenericApplicationContext;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -86,7 +87,8 @@ class VirtualThreadTest {
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false),
             null);
-    DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
+    DistributedLockAspect aspect =
+        new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());
 
     AspectJProxyFactory factory = new AspectJProxyFactory(new VirtualThreadTestServiceImpl());
     factory.setProxyTargetClass(true);
