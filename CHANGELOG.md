@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-01-16
+
+### Added
+- **Distributed Semaphores** - New `@DistributedSemaphore` annotation for permit-based concurrency control (#8)
+- `SemaphoreSkipHandler` interface for custom semaphore skip behavior
+- `SemaphoreThrowExceptionHandler` and `SemaphoreReturnDefaultHandler` built-in handlers
+- `SemaphoreContext` record for handler context
+- `SemaphoreNotAcquiredException` and `SemaphoreLeaseExpiredException` exceptions
+- Spring bean dependency injection support for skip handlers
+- `DefaultValueResolver` utility for shared default value resolution
+- `SpELKeyResolver` and `DurationResolver` shared utilities
+
+### Changed
+- Handler resolution now checks Spring ApplicationContext first, falls back to reflection
+- Extracted common utilities to `support` package
+- Improved handler caching with instance-level cache per aspect
+
 ## [1.4.3] - 2026-01-03
 
 ### Added

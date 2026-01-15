@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * @author Garvit Joshi
- * @since 1.5.0
+ * @since 2.0.0
  */
 public final class DefaultValueResolver {
 

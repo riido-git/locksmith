@@ -426,11 +426,11 @@ public class DistributedSemaphoreAspect {
             } catch (BeansException ignored) {
               // Bean not found, will fall back to reflection
             }
-          }else {
+          } else {
             if (Boolean.TRUE.equals(semaphoreProperties.debug())) {
               LOG.info(
-                      "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
-                      clazz.getName());
+                  "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
+                  clazz.getName());
             }
           }
           // Not a Spring bean, fall back to reflection
