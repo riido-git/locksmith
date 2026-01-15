@@ -4,21 +4,22 @@ import java.io.Serial;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Exception thrown when a method's execution time exceeds the configured lease duration.
+ * Exception thrown when a method's execution time exceeds the configured semaphore permit lease
+ * duration.
  *
  * <p>This exception is thrown after the method completes when the configured behavior is {@link
- * in.riido.locksmith.LeaseExpirationBehavior#THROW_EXCEPTION}. It indicates that the lock may have
- * expired during execution, potentially allowing concurrent access by other instances.
+ * in.riido.locksmith.LeaseExpirationBehavior#THROW_EXCEPTION}. It indicates that the permit may
+ * have expired during execution, potentially allowing more concurrent executions than intended.
  *
  * @author Garvit Joshi
- * @since 1.2.0
+ * @since 2.0.0
  */
-public class LeaseExpiredException extends RuntimeException {
+public class SemaphoreLeaseExpiredException extends RuntimeException {
 
-  @Serial private static final long serialVersionUID = 6423605121456789012L;
+  @Serial private static final long serialVersionUID = 1531109849210987651L;
 
-  /** The Redis key of the lock that expired. */
-  private final String lockKey;
+  /** The Redis key of the semaphore whose permit expired. */
+  private final String semaphoreKey;
 
   /** The name of the method that exceeded lease time. */
   private final String methodName;
@@ -30,35 +31,38 @@ public class LeaseExpiredException extends RuntimeException {
   private final long executionTimeMs;
 
   /**
-   * Constructs a new LeaseExpiredException.
+   * Constructs a new SemaphoreLeaseExpiredException.
    *
-   * @param lockKey the lock key that expired
+   * @param semaphoreKey the semaphore key whose permit expired
    * @param methodName the method that exceeded lease time
    * @param leaseTimeMs the configured lease time in milliseconds
    * @param executionTimeMs the actual execution time in milliseconds
    */
-  public LeaseExpiredException(
-      @NonNull String lockKey, @NonNull String methodName, long leaseTimeMs, long executionTimeMs) {
+  public SemaphoreLeaseExpiredException(
+      @NonNull String semaphoreKey,
+      @NonNull String methodName,
+      long leaseTimeMs,
+      long executionTimeMs) {
     super(
         String.format(
-            "Lock [%s] lease expired during execution of [%s]. "
+            "Semaphore [%s] permit lease expired during execution of [%s]. "
                 + "Lease time: %dms, Execution time: %dms. "
-                + "The lock may have been acquired by another instance during execution.",
-            lockKey, methodName, leaseTimeMs, executionTimeMs));
-    this.lockKey = lockKey;
+                + "The permit may have been acquired by another instance during execution.",
+            semaphoreKey, methodName, leaseTimeMs, executionTimeMs));
+    this.semaphoreKey = semaphoreKey;
     this.methodName = methodName;
     this.leaseTimeMs = leaseTimeMs;
     this.executionTimeMs = executionTimeMs;
   }
 
   /**
-   * Returns the lock key that expired.
+   * Returns the semaphore key whose permit expired.
    *
-   * @return the lock key
+   * @return the semaphore key
    */
   @NonNull
-  public String getLockKey() {
-    return lockKey;
+  public String getSemaphoreKey() {
+    return semaphoreKey;
   }
 
   /**

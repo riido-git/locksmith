@@ -1,9 +1,9 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,7 +23,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(key = "long-running-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "long-running-lock", skipHandler = LockReturnDefaultHandler.class)
   public void longRunningMethod(CountDownLatch started, AtomicInteger count) {
     started.countDown();
     try {
@@ -35,13 +35,13 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(key = "long-running-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "long-running-lock", skipHandler = LockReturnDefaultHandler.class)
   public String tryAcquireSameLock() {
     return "should-not-execute";
   }
 
   @Override
-  @DistributedLock(key = "throw-test-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "throw-test-lock", skipHandler = LockReturnDefaultHandler.class)
   public void holdLockForThrowTest(CountDownLatch started) {
     started.countDown();
     try {
@@ -58,7 +58,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(key = "wait-test-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "wait-test-lock", skipHandler = LockReturnDefaultHandler.class)
   public void shortHoldingMethod(AtomicInteger count) {
     try {
       Thread.sleep(100);
@@ -69,16 +69,16 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "wait-test-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "5s")
+  @DistributedLock(key = "wait-test-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "5s")
   public void waitAndExecuteMethod(AtomicInteger count) {
     count.incrementAndGet();
   }
 
   @Override
-  @DistributedLock(key = "rw-lock", type = LockType.READ, skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(
+      key = "rw-lock",
+      type = LockType.READ,
+      skipHandler = LockReturnDefaultHandler.class)
   public void readLockMethod(
       AtomicInteger concurrentReaders,
       AtomicInteger maxConcurrentReaders,
@@ -98,7 +98,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   @DistributedLock(
       key = "rw-test-lock",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void holdReadLock(CountDownLatch acquired) {
     acquired.countDown();
     try {
@@ -112,7 +112,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   @DistributedLock(
       key = "rw-test-lock",
       type = LockType.WRITE,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public String tryWriteLock(AtomicInteger count) {
     count.incrementAndGet();
     return "write-executed";
@@ -122,7 +122,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   @DistributedLock(
       key = "rw-test-lock2",
       type = LockType.WRITE,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void holdWriteLock(CountDownLatch acquired) {
     acquired.countDown();
     try {
@@ -136,7 +136,7 @@ public class IntegrationTestServiceImpl implements IntegrationTestService {
   @DistributedLock(
       key = "rw-test-lock2",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public String tryReadLock(AtomicInteger count) {
     count.incrementAndGet();
     return "read-executed";

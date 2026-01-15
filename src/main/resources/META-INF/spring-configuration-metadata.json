@@ -4,36 +4,78 @@
       "name": "locksmith",
       "type": "in.riido.locksmith.autoconfigure.LocksmithProperties",
       "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
-      "description": "Configuration properties for Locksmith distributed locking."
+      "description": "Configuration properties for Locksmith distributed locking and semaphores."
+    },
+    {
+      "name": "locksmith.lock",
+      "type": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceMethod": "lock()",
+      "description": "Configuration properties for distributed locks."
+    },
+    {
+      "name": "locksmith.semaphore",
+      "type": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceMethod": "semaphore()",
+      "description": "Configuration properties for distributed semaphores."
     }
   ],
   "properties": [
     {
-      "name": "locksmith.lease-time",
+      "name": "locksmith.lock.lease-time",
       "type": "java.time.Duration",
-      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
       "description": "The default time after which the lock is automatically released. This prevents deadlocks if a server crashes while holding a lock. Supports duration strings like '10m', '30s', '1h' or ISO-8601 format like 'PT10M'.",
       "defaultValue": "10m"
     },
     {
-      "name": "locksmith.wait-time",
+      "name": "locksmith.lock.wait-time",
       "type": "java.time.Duration",
-      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
       "description": "The default time to wait for acquiring a lock when using WAIT_AND_SKIP mode. If the lock cannot be acquired within this time, the method execution is skipped. Supports duration strings like '60s', '5m' or ISO-8601 format like 'PT1M'.",
       "defaultValue": "60s"
     },
     {
-      "name": "locksmith.key-prefix",
+      "name": "locksmith.lock.key-prefix",
       "type": "java.lang.String",
-      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
       "description": "The prefix to use for all lock keys in Redis. This helps namespace your locks and avoid conflicts with other applications sharing the same Redis instance.",
       "defaultValue": "lock:"
     },
     {
-      "name": "locksmith.debug",
+      "name": "locksmith.lock.debug",
       "type": "java.lang.Boolean",
-      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
       "description": "When enabled, logs detailed information about lock operations including key resolution, lock type, timing, and acquisition status.",
+      "defaultValue": false
+    },
+    {
+      "name": "locksmith.semaphore.lease-time",
+      "type": "java.time.Duration",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "description": "The default time after which the semaphore permit is automatically released. This prevents deadlocks if a server crashes while holding a permit. Supports duration strings like '5m', '30s', '1h' or ISO-8601 format like 'PT5M'.",
+      "defaultValue": "5m"
+    },
+    {
+      "name": "locksmith.semaphore.wait-time",
+      "type": "java.time.Duration",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "description": "The default time to wait for acquiring a semaphore permit when using WAIT_AND_SKIP mode. If a permit cannot be acquired within this time, the method execution is skipped. Supports duration strings like '60s', '5m' or ISO-8601 format like 'PT1M'.",
+      "defaultValue": "60s"
+    },
+    {
+      "name": "locksmith.semaphore.key-prefix",
+      "type": "java.lang.String",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "description": "The prefix to use for all semaphore keys in Redis. This helps namespace your semaphores and avoid conflicts with other applications sharing the same Redis instance.",
+      "defaultValue": "semaphore:"
+    },
+    {
+      "name": "locksmith.semaphore.debug",
+      "type": "java.lang.Boolean",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "description": "When enabled, logs detailed information about semaphore operations including key resolution, permit count, timing, and acquisition status.",
       "defaultValue": false
     }
   ]

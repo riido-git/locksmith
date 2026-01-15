@@ -38,4 +38,7 @@ build/
 ### Mac OS ###
 .DS_Store
 /.idea/
-/ARTICLE.md
+
+## claude files
+.claude
+/CLAUDE.md

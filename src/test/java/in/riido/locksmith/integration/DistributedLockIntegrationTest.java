@@ -23,6 +23,7 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.context.support.GenericApplicationContext;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -51,8 +52,12 @@ class DistributedLockIntegrationTest {
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
-        new LocksmithProperties(Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false);
-    DistributedLockAspect aspect = new DistributedLockAspect(redissonClient, properties);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false),
+            null);
+    DistributedLockAspect aspect =
+        new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());
 
     // Use CGLIB proxy on the implementation class directly to preserve annotations
     AspectJProxyFactory factory = new AspectJProxyFactory(new IntegrationTestServiceImpl());

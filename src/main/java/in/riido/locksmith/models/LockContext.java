@@ -1,7 +1,9 @@
-package in.riido.locksmith.handler;
+package in.riido.locksmith.models;
 
+import in.riido.locksmith.handler.LockSkipHandler;
 import java.lang.reflect.Method;
 import java.util.Objects;
+import org.jspecify.annotations.NonNull;
 
 /**
  * Provides contextual information about a lock acquisition attempt.
@@ -18,7 +20,11 @@ import java.util.Objects;
  * @since 1.2.0
  */
 public record LockContext(
-    String lockKey, String methodName, Method method, Object[] args, Class<?> returnType) {
+    @NonNull String lockKey,
+    @NonNull String methodName,
+    @NonNull Method method,
+    @NonNull Object[] args,
+    @NonNull Class<?> returnType) {
 
   /**
    * Compact constructor that validates all parameters are non-null.

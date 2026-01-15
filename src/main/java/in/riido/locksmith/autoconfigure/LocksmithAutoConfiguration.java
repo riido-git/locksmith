@@ -1,6 +1,8 @@
 package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
+import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
+import org.jspecify.annotations.NonNull;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,10 +12,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 
 /**
- * Autoconfiguration for Locksmith distributed locking.
+ * Autoconfiguration for Locksmith distributed locking and semaphore support.
  *
  * <p>This configuration is automatically applied when:
  *
@@ -58,19 +61,49 @@ public class LocksmithAutoConfiguration {
    *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
    * @return the configured DistributedLockAspect
    */
   @Bean
   @ConditionalOnMissingBean
+  @NonNull
   public DistributedLockAspect distributedLockAspect(
-      RedissonClient redissonClient, LocksmithProperties properties) {
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
     LOG.info(
-        "Initializing locksmith with Spring Boot {} and Redisson {} - Properties: {}",
+        "Initializing locksmith lock aspect with Spring Boot {} and Redisson {} - Lock Properties: {}",
         springBootVersion,
         redissonVersion,
-        properties);
-    return new DistributedLockAspect(redissonClient, properties);
+        properties.lock());
+    return new DistributedLockAspect(redissonClient, properties, applicationContext);
+  }
+
+  /**
+   * Creates the distributed semaphore aspect bean.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
+   * @return the configured DistributedSemaphoreAspect
+   * @since 2.0.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @NonNull
+  public DistributedSemaphoreAspect distributedSemaphoreAspect(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
+    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
+    String springBootVersion = SpringBootVersion.getVersion();
+    LOG.info(
+        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Semaphore Properties: {}",
+        springBootVersion,
+        redissonVersion,
+        properties.semaphore());
+    return new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
   }
 }

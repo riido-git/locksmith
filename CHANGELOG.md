@@ -118,6 +118,6 @@ All notable changes to this project will be documented in this file.
 - Initial release
 - @DistributedLock annotation with SpEL support
 - Lock acquisition modes (SKIP_IMMEDIATELY, WAIT_AND_SKIP)
-- Auto-configuration for Spring Boot 4.x
+- Autoconfiguration for Spring Boot 4.x
 - Redisson integration for distributed locks
 - 29 unit tests

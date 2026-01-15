@@ -1,9 +1,9 @@
 package in.riido.locksmith.integration.service;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -15,7 +15,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   @Override
   @DistributedLock(
       key = "vt-exclusive-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
+      mode = AcquisitionMode.WAIT_AND_SKIP,
       waitTime = "30s")
   public void exclusiveLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
@@ -31,7 +31,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "vt-try-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "vt-try-lock", skipHandler = LockReturnDefaultHandler.class)
   public boolean tryAcquireLock() {
     try {
       Thread.sleep(5);
@@ -42,7 +42,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "vt-contention-lock", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "vt-contention-lock", skipHandler = LockReturnDefaultHandler.class)
   public boolean contentionTestMethod(
       AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
@@ -62,7 +62,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   @DistributedLock(
       key = "vt-rw-concurrent",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void readOperation(AtomicInteger currentReaders, AtomicInteger maxConcurrentReaders) {
     int current = currentReaders.incrementAndGet();
     maxConcurrentReaders.updateAndGet(max -> Math.max(max, current));
@@ -78,7 +78,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   @DistributedLock(
       key = "vt-rw-block-test",
       type = LockType.READ,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public void longReadOperation(AtomicBoolean readerActive, CountDownLatch started) {
     readerActive.set(true);
     started.countDown();
@@ -94,13 +94,13 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   @DistributedLock(
       key = "vt-rw-block-test",
       type = LockType.WRITE,
-      skipHandler = ReturnDefaultHandler.class)
+      skipHandler = LockReturnDefaultHandler.class)
   public boolean tryWriteOperation() {
     return true;
   }
 
   @Override
-  @DistributedLock(key = "#{#key}", skipHandler = ReturnDefaultHandler.class)
+  @DistributedLock(key = "#{#key}", skipHandler = LockReturnDefaultHandler.class)
   public void isolatedLockMethod(
       String key, AtomicInteger concurrentExecutions, AtomicInteger maxConcurrentExecutions) {
     int current = concurrentExecutions.incrementAndGet();
@@ -114,10 +114,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(
-      key = "vt-order-lock",
-      mode = LockAcquisitionMode.WAIT_AND_SKIP,
-      waitTime = "30s")
+  @DistributedLock(key = "vt-order-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
   public void waitAndExecuteMethod(int index, List<Integer> order) {
     order.add(index);
     try {
@@ -128,7 +125,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "vt-wait-lock", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "60s")
+  @DistributedLock(key = "vt-wait-lock", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "60s")
   public void waitForLockMethod(AtomicInteger activeThreads, AtomicBoolean concurrentExecution) {
     int current = activeThreads.incrementAndGet();
     if (current > 1) {
@@ -143,7 +140,7 @@ public class VirtualThreadTestServiceImpl implements VirtualThreadTestService {
   }
 
   @Override
-  @DistributedLock(key = "#{#key}", mode = LockAcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
+  @DistributedLock(key = "#{#key}", mode = AcquisitionMode.WAIT_AND_SKIP, waitTime = "30s")
   public void performanceTestMethod(String key) {
     try {
       Thread.sleep(5);

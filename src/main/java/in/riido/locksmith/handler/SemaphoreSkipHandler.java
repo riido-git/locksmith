@@ -1,14 +1,14 @@
 package in.riido.locksmith.handler;
 
-import in.riido.locksmith.models.LockContext;
+import in.riido.locksmith.models.SemaphoreContext;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Interface for handling lock acquisition failures with custom logic.
+ * Interface for handling semaphore permit acquisition failures with custom logic.
  *
- * <p>Implementations of this interface are invoked when a distributed lock cannot be acquired and
- * the method execution is skipped. This enables custom behavior such as:
+ * <p>Implementations of this interface are invoked when a distributed semaphore permit cannot be
+ * acquired and the method execution is skipped. This enables custom behavior such as:
  *
  * <ul>
  *   <li>Logging to specific systems
@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * </ol>
  *
  * <p><b>Thread-Safety Requirement:</b> Implementations must be stateless and thread-safe. Handler
- * instances are cached and reused across all lock acquisition failures. The same handler instance
+ * instances are cached and reused across all permit acquisition failures. The same handler instance
  * may be invoked concurrently by multiple threads. Do not use instance variables to store state
  * between invocations.
  *
@@ -33,16 +33,16 @@ import org.jspecify.annotations.Nullable;
  *
  * <pre>{@code
  * @Component
- * public class AlertingSkipHandler implements LockSkipHandler {
+ * public class AlertingSemaphoreHandler implements SemaphoreSkipHandler {
  *     private final AlertService alertService;
  *
- *     public AlertingSkipHandler(AlertService alertService) {
+ *     public AlertingSemaphoreHandler(AlertService alertService) {
  *         this.alertService = alertService;
  *     }
  *
  *     @Override
- *     public Object handle(LockContext context) {
- *         alertService.sendAlert("Lock acquisition failed for: " + context.lockKey());
+ *     public Object handle(SemaphoreContext context) {
+ *         alertService.sendAlert("Permit acquisition failed for: " + context.semaphoreKey());
  *         return null; // or return a fallback value
  *     }
  * }
@@ -51,11 +51,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Example simple implementation (no Spring dependencies):
  *
  * <pre>{@code
- * public class LoggingSkipHandler implements LockSkipHandler {
+ * public class LoggingSemaphoreHandler implements SemaphoreSkipHandler {
  *
  *     @Override
- *     public Object handle(LockContext context) {
- *         System.out.println("Lock acquisition failed for: " + context.lockKey());
+ *     public Object handle(SemaphoreContext context) {
+ *         System.out.println("Permit acquisition failed for: " + context.semaphoreKey());
  *         return null;
  *     }
  * }
@@ -64,28 +64,29 @@ import org.jspecify.annotations.Nullable;
  * <p>Usage:
  *
  * <pre>{@code
- * @DistributedLock(key = "my-task", skipHandler = AlertingSkipHandler.class)
+ * @DistributedSemaphore(key = "my-pool", permits = 10, leaseTime = "5m",
+ *     skipHandler = AlertingSemaphoreHandler.class)
  * public void myTask() { }
  * }</pre>
  *
  * @author Garvit Joshi
- * @see LockContext
- * @since 1.2.0
+ * @see SemaphoreContext
+ * @since 2.0.0
  */
-public interface LockSkipHandler {
+public interface SemaphoreSkipHandler {
 
   /**
-   * Handles the case when a lock cannot be acquired.
+   * Handles the case when a semaphore permit cannot be acquired.
    *
-   * <p>This method is called when lock acquisition fails and the method execution is skipped. The
+   * <p>This method is called when permit acquisition fails and the method execution is skipped. The
    * returned value will be used as the method's return value.
    *
    * <p><b>Important:</b> This method must be thread-safe as it may be called concurrently by
    * multiple threads on the same handler instance.
    *
-   * @param context the lock context containing information about the failed acquisition
+   * @param context the semaphore context containing information about the failed acquisition
    * @return the value to return from the method, must be compatible with the method's return type
    * @throws RuntimeException implementations may throw exceptions to indicate failure
    */
-  @Nullable Object handle(@NonNull LockContext context);
+  @Nullable Object handle(@NonNull SemaphoreContext context);
 }

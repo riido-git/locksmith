@@ -2,7 +2,8 @@ package in.riido.locksmith;
 
 import in.riido.locksmith.exception.LockNotAcquiredException;
 import in.riido.locksmith.handler.LockSkipHandler;
-import in.riido.locksmith.handler.ThrowExceptionHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockThrowExceptionHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -16,9 +17,8 @@ import java.lang.annotation.Target;
  * <p>When the lock cannot be acquired, the behavior is controlled by {@link #skipHandler()}:
  *
  * <ul>
- *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
- *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null for objects, default
- *       values for primitives
+ *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+ *   <li>{@link LockReturnDefaultHandler}: Returns null for objects, default values for primitives
  * </ul>
  *
  * <p>Usage examples:
@@ -97,7 +97,7 @@ public @interface DistributedLock {
    *
    * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
    */
-  LockAcquisitionMode mode() default LockAcquisitionMode.SKIP_IMMEDIATELY;
+  AcquisitionMode mode() default AcquisitionMode.SKIP_IMMEDIATELY;
 
   /**
    * Override the default lease time. The lock will be automatically released after this duration.
@@ -132,32 +132,43 @@ public @interface DistributedLock {
   /**
    * Custom handler for lock acquisition failures.
    *
-   * <p>The handler must have a public no-argument constructor. Built-in handlers:
+   * <p>Handlers can be defined as Spring beans (with dependency injection support) or as plain
+   * classes with a public no-argument constructor. Spring beans are looked up first by type, then
+   * reflection-based instantiation is used as a fallback.
+   *
+   * <p>Built-in handlers:
    *
    * <ul>
-   *   <li>{@link ThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
-   *   <li>{@link in.riido.locksmith.handler.ReturnDefaultHandler}: Returns null/default values
+   *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
+   *   <li>{@link LockReturnDefaultHandler}: Returns null/default values
    * </ul>
    *
-   * <p>Example custom handler:
+   * <p>Example Spring bean handler with dependency injection:
    *
    * <pre>{@code
-   * public class MyCustomHandler implements LockSkipHandler {
+   * @Component
+   * public class AlertingHandler implements LockSkipHandler {
+   *     private final AlertService alertService;
+   *
+   *     public AlertingHandler(AlertService alertService) {
+   *         this.alertService = alertService;
+   *     }
+   *
    *     @Override
    *     public Object handle(LockContext context) {
-   *         log.warn("Lock {} not acquired for {}", context.lockKey(), context.methodName());
+   *         alertService.sendAlert("Lock failed: " + context.lockKey());
    *         return null;
    *     }
    * }
    *
-   * @DistributedLock(key = "my-task", skipHandler = MyCustomHandler.class)
+   * @DistributedLock(key = "my-task", skipHandler = AlertingHandler.class)
    * public void myTask() { }
    * }</pre>
    *
    * @return the skip handler class, defaults to ThrowExceptionHandler
    * @see LockSkipHandler
    */
-  Class<? extends LockSkipHandler> skipHandler() default ThrowExceptionHandler.class;
+  Class<? extends LockSkipHandler> skipHandler() default LockThrowExceptionHandler.class;
 
   /**
    * Defines the behavior when method execution time exceeds the configured lease duration.

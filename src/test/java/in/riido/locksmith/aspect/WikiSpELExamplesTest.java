@@ -1,27 +1,21 @@
 package in.riido.locksmith.aspect;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.DistributedLock;
-import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.support.SpELKeyResolver;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.reflect.MethodSignature;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.redisson.api.RedissonClient;
 
 /**
  * Test cases for all SpEL examples from the GitHub Wiki.
@@ -32,24 +26,6 @@ import org.redisson.api.RedissonClient;
  */
 @DisplayName("Wiki SpEL Examples Tests")
 class WikiSpELExamplesTest {
-
-  private DistributedLockAspect aspect;
-  private ProceedingJoinPoint joinPoint;
-  private MethodSignature methodSignature;
-
-  @BeforeEach
-  void setUp() {
-    RedissonClient redissonClient = mock(RedissonClient.class);
-    LocksmithProperties lockProperties =
-        new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false);
-    aspect = new DistributedLockAspect(redissonClient, lockProperties);
-    joinPoint = mock(ProceedingJoinPoint.class);
-    methodSignature = mock(MethodSignature.class);
-
-    when(joinPoint.getSignature()).thenReturn(methodSignature);
-    when(methodSignature.getDeclaringType()).thenReturn(WikiExamples.class);
-    when(methodSignature.getName()).thenReturn("testMethod");
-  }
 
   /** Test class with all wiki examples. */
   public static class WikiExamples {
@@ -224,10 +200,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#userId}")
     void shouldResolveUserId() throws Exception {
       Method method = WikiExamples.class.getMethod("updateUser", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      Object[] args = new Object[] {"user123"};
 
-      String result = aspect.resolveKey("#{#userId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#userId}", method, args);
 
       assertEquals("user123", result);
     }
@@ -236,10 +211,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#orderId}")
     void shouldResolveOrderId() throws Exception {
       Method method = WikiExamples.class.getMethod("processOrder", Long.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {12345L});
+      Object[] args = new Object[] {12345L};
 
-      String result = aspect.resolveKey("#{#orderId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#orderId}", method, args);
 
       assertEquals("12345", result);
     }
@@ -253,10 +227,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{'user-' + #userId}")
     void shouldConcatenateUserPrefix() throws Exception {
       Method method = WikiExamples.class.getMethod("updateUserWithPrefix", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      Object[] args = new Object[] {"user123"};
 
-      String result = aspect.resolveKey("#{'user-' + #userId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'user-' + #userId}", method, args);
 
       assertEquals("user-user123", result);
     }
@@ -265,10 +238,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{'order-' + #orderId + '-process'}")
     void shouldConcatenateOrderWithSuffix() throws Exception {
       Method method = WikiExamples.class.getMethod("processOrderWithSuffix", Long.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {12345L});
+      Object[] args = new Object[] {12345L};
 
-      String result = aspect.resolveKey("#{'order-' + #orderId + '-process'}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'order-' + #orderId + '-process'}", method, args);
 
       assertEquals("order-12345-process", result);
     }
@@ -282,11 +254,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#user.id}")
     void shouldResolveUserId() throws Exception {
       Method method = WikiExamples.class.getMethod("updateUserById", WikiExamples.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {new WikiExamples.User("123", "John", "john@example.com")});
+      Object[] args = new Object[] {new WikiExamples.User("123", "John", "john@example.com")};
 
-      String result = aspect.resolveKey("#{#user.id}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#user.id}", method, args);
 
       assertEquals("123", result);
     }
@@ -296,12 +266,11 @@ class WikiSpELExamplesTest {
     void shouldResolveNestedProperty() throws Exception {
       Method method =
           WikiExamples.class.getMethod("processOrderByCustomerId", WikiExamples.Order.class);
-      when(methodSignature.getMethod()).thenReturn(method);
       WikiExamples.Order order =
           new WikiExamples.Order("ord-1", new WikiExamples.Customer("456", "Jane"));
-      when(joinPoint.getArgs()).thenReturn(new Object[] {order});
+      Object[] args = new Object[] {order};
 
-      String result = aspect.resolveKey("#{#order.customer.id}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#order.customer.id}", method, args);
 
       assertEquals("456", result);
     }
@@ -310,11 +279,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{'user-' + #user.email}")
     void shouldConcatenateUserEmail() throws Exception {
       Method method = WikiExamples.class.getMethod("sendEmail", WikiExamples.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {new WikiExamples.User("123", "John", "john@example.com")});
+      Object[] args = new Object[] {new WikiExamples.User("123", "John", "john@example.com")};
 
-      String result = aspect.resolveKey("#{'user-' + #user.email}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'user-' + #user.email}", method, args);
 
       assertEquals("user-john@example.com", result);
     }
@@ -329,10 +296,9 @@ class WikiSpELExamplesTest {
     void shouldCombineMultipleParams() throws Exception {
       Method method =
           WikiExamples.class.getMethod("updateUserInTenant", String.class, String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"tenant1", "user123"});
+      Object[] args = new Object[] {"tenant1", "user123"};
 
-      String result = aspect.resolveKey("#{#tenantId + '-' + #userId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#tenantId + '-' + #userId}", method, args);
 
       assertEquals("tenant1-user123", result);
     }
@@ -342,13 +308,11 @@ class WikiSpELExamplesTest {
     void shouldCombineTransferAccounts() throws Exception {
       Method method =
           WikiExamples.class.getMethod("transfer", String.class, String.class, BigDecimal.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {"ACC001", "ACC002", new BigDecimal("100.00")});
+      Object[] args = new Object[] {"ACC001", "ACC002", new BigDecimal("100.00")};
 
       String result =
-          aspect.resolveKey(
-              "#{'transfer-' + #fromAccount + '-to-' + #toAccount}", method, joinPoint);
+          SpELKeyResolver.resolve(
+              "#{'transfer-' + #fromAccount + '-to-' + #toAccount}", method, args);
 
       assertEquals("transfer-ACC001-to-ACC002", result);
     }
@@ -362,10 +326,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#p0}")
     void shouldResolveByP0() throws Exception {
       Method method = WikiExamples.class.getMethod("processByP0", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123"});
+      Object[] args = new Object[] {"user123"};
 
-      String result = aspect.resolveKey("#{#p0}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#p0}", method, args);
 
       assertEquals("user123", result);
     }
@@ -374,10 +337,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#a0 + '-' + #a1}")
     void shouldResolveByA0A1() throws Exception {
       Method method = WikiExamples.class.getMethod("processByPosition", String.class, String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"first", "second"});
+      Object[] args = new Object[] {"first", "second"};
 
-      String result = aspect.resolveKey("#{#a0 + '-' + #a1}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#a0 + '-' + #a1}", method, args);
 
       assertEquals("first-second", result);
     }
@@ -391,10 +353,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#email.toLowerCase()}")
     void shouldCallToLowerCase() throws Exception {
       Method method = WikiExamples.class.getMethod("processEmail", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"JOHN@EXAMPLE.COM"});
+      Object[] args = new Object[] {"JOHN@EXAMPLE.COM"};
 
-      String result = aspect.resolveKey("#{#email.toLowerCase()}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#email.toLowerCase()}", method, args);
 
       assertEquals("john@example.com", result);
     }
@@ -403,10 +364,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#list.size()}")
     void shouldCallSize() throws Exception {
       Method method = WikiExamples.class.getMethod("processList", List.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {Arrays.asList("a", "b", "c", "d", "e")});
+      Object[] args = new Object[] {Arrays.asList("a", "b", "c", "d", "e")};
 
-      String result = aspect.resolveKey("#{#list.size()}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#list.size()}", method, args);
 
       assertEquals("5", result);
     }
@@ -415,11 +375,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#date.toLocalDate().toString()}")
     void shouldCallToLocalDate() throws Exception {
       Method method = WikiExamples.class.getMethod("processForDate", LocalDateTime.class);
-      when(methodSignature.getMethod()).thenReturn(method);
       LocalDateTime date = LocalDateTime.of(2024, 1, 15, 14, 30);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {date});
+      Object[] args = new Object[] {date};
 
-      String result = aspect.resolveKey("#{#date.toLocalDate().toString()}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#date.toLocalDate().toString()}", method, args);
 
       assertEquals("2024-01-15", result);
     }
@@ -428,11 +387,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#user.getId()}")
     void shouldCallGetId() throws Exception {
       Method method = WikiExamples.class.getMethod("processUserGetId", WikiExamples.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {new WikiExamples.User("user-456", "Alice", "alice@test.com")});
+      Object[] args = new Object[] {new WikiExamples.User("user-456", "Alice", "alice@test.com")};
 
-      String result = aspect.resolveKey("#{#user.getId()}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#user.getId()}", method, args);
 
       assertEquals("user-456", result);
     }
@@ -447,12 +404,11 @@ class WikiSpELExamplesTest {
     void shouldResolveConditionalPremiumTrue() throws Exception {
       Method method =
           WikiExamples.class.getMethod("processUserPremium", String.class, boolean.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123", true});
+      Object[] args = new Object[] {"user123", true};
 
       String result =
-          aspect.resolveKey(
-              "#{#premium ? 'premium-' + #userId : 'standard-' + #userId}", method, joinPoint);
+          SpELKeyResolver.resolve(
+              "#{#premium ? 'premium-' + #userId : 'standard-' + #userId}", method, args);
 
       assertEquals("premium-user123", result);
     }
@@ -462,12 +418,11 @@ class WikiSpELExamplesTest {
     void shouldResolveConditionalPremiumFalse() throws Exception {
       Method method =
           WikiExamples.class.getMethod("processUserPremium", String.class, boolean.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"user123", false});
+      Object[] args = new Object[] {"user123", false};
 
       String result =
-          aspect.resolveKey(
-              "#{#premium ? 'premium-' + #userId : 'standard-' + #userId}", method, joinPoint);
+          SpELKeyResolver.resolve(
+              "#{#premium ? 'premium-' + #userId : 'standard-' + #userId}", method, args);
 
       assertEquals("standard-user123", result);
     }
@@ -476,10 +431,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#amount > 1000 ? 'large' : 'small'} with large amount")
     void shouldResolveAmountLarge() throws Exception {
       Method method = WikiExamples.class.getMethod("processPayment", double.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {1500.0});
+      Object[] args = new Object[] {1500.0};
 
-      String result = aspect.resolveKey("#{#amount > 1000 ? 'large' : 'small'}", method, joinPoint);
+      String result =
+          SpELKeyResolver.resolve("#{#amount > 1000 ? 'large' : 'small'}", method, args);
 
       assertEquals("large", result);
     }
@@ -488,10 +443,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#amount > 1000 ? 'large' : 'small'} with small amount")
     void shouldResolveAmountSmall() throws Exception {
       Method method = WikiExamples.class.getMethod("processPayment", double.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {500.0});
+      Object[] args = new Object[] {500.0};
 
-      String result = aspect.resolveKey("#{#amount > 1000 ? 'large' : 'small'}", method, joinPoint);
+      String result =
+          SpELKeyResolver.resolve("#{#amount > 1000 ? 'large' : 'small'}", method, args);
 
       assertEquals("small", result);
     }
@@ -505,12 +460,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#user.nickname ?: #user.id} with nickname")
     void shouldUseNickname() throws Exception {
       Method method = WikiExamples.class.getMethod("updateUserWithElvis", WikiExamples.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(
-              new Object[] {new WikiExamples.User("123", "John", "john@test.com", "Johnny")});
+      Object[] args =
+          new Object[] {new WikiExamples.User("123", "John", "john@test.com", "Johnny")};
 
-      String result = aspect.resolveKey("#{#user.nickname ?: #user.id}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#user.nickname ?: #user.id}", method, args);
 
       assertEquals("Johnny", result);
     }
@@ -519,11 +472,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#user.nickname ?: #user.id} without nickname")
     void shouldFallbackToId() throws Exception {
       Method method = WikiExamples.class.getMethod("updateUserWithElvis", WikiExamples.User.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {new WikiExamples.User("123", "John", "john@test.com", null)});
+      Object[] args = new Object[] {new WikiExamples.User("123", "John", "john@test.com", null)};
 
-      String result = aspect.resolveKey("#{#user.nickname ?: #user.id}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#user.nickname ?: #user.id}", method, args);
 
       assertEquals("123", result);
     }
@@ -533,13 +484,12 @@ class WikiSpELExamplesTest {
     void shouldResolveSafeNavigationWithOrder() throws Exception {
       Method method =
           WikiExamples.class.getMethod("processOrderSafeNavigation", WikiExamples.Order.class);
-      when(methodSignature.getMethod()).thenReturn(method);
       WikiExamples.Order order =
           new WikiExamples.Order("ord-1", new WikiExamples.Customer("cust-456", "Customer"));
-      when(joinPoint.getArgs()).thenReturn(new Object[] {order});
+      Object[] args = new Object[] {order};
 
       String result =
-          aspect.resolveKey("#{#order?.customer?.id ?: 'anonymous'}", method, joinPoint);
+          SpELKeyResolver.resolve("#{#order?.customer?.id ?: 'anonymous'}", method, args);
 
       assertEquals("cust-456", result);
     }
@@ -549,11 +499,10 @@ class WikiSpELExamplesTest {
     void shouldResolveSafeNavigationWithNullOrder() throws Exception {
       Method method =
           WikiExamples.class.getMethod("processOrderSafeNavigation", WikiExamples.Order.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {null});
+      Object[] args = new Object[] {null};
 
       String result =
-          aspect.resolveKey("#{#order?.customer?.id ?: 'anonymous'}", method, joinPoint);
+          SpELKeyResolver.resolve("#{#order?.customer?.id ?: 'anonymous'}", method, args);
 
       assertEquals("anonymous", result);
     }
@@ -567,10 +516,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#ids[0]}")
     void shouldAccessFirstElement() throws Exception {
       Method method = WikiExamples.class.getMethod("processFirst", List.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {Arrays.asList("first-id", "second-id")});
+      Object[] args = new Object[] {Arrays.asList("first-id", "second-id")};
 
-      String result = aspect.resolveKey("#{#ids[0]}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#ids[0]}", method, args);
 
       assertEquals("first-id", result);
     }
@@ -579,10 +527,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#args[0] + '-' + #args[1]}")
     void shouldAccessVarargsElements() throws Exception {
       Method method = WikiExamples.class.getMethod("processVarargs", String[].class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {new String[] {"arg1", "arg2", "arg3"}});
+      Object[] args = new Object[] {new String[] {"arg1", "arg2", "arg3"}};
 
-      String result = aspect.resolveKey("#{#args[0] + '-' + #args[1]}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#args[0] + '-' + #args[1]}", method, args);
 
       assertEquals("arg1-arg2", result);
     }
@@ -591,11 +538,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#users[0].name}")
     void shouldAccessObjectInCollection() throws Exception {
       Method method = WikiExamples.class.getMethod("processFirstUser", List.class);
-      when(methodSignature.getMethod()).thenReturn(method);
       List<WikiExamples.User> users = List.of(new WikiExamples.User("1", "John", "john@test.com"));
-      when(joinPoint.getArgs()).thenReturn(new Object[] {users});
+      Object[] args = new Object[] {users};
 
-      String result = aspect.resolveKey("#{#users[0].name}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#users[0].name}", method, args);
 
       assertEquals("John", result);
     }
@@ -609,10 +555,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#params['orderId']}")
     void shouldAccessMapValue() throws Exception {
       Method method = WikiExamples.class.getMethod("processMap", Map.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {Map.of("orderId", "order123")});
+      Object[] args = new Object[] {Map.of("orderId", "order123")};
 
-      String result = aspect.resolveKey("#{#params['orderId']}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#params['orderId']}", method, args);
 
       assertEquals("order123", result);
     }
@@ -621,12 +566,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{#context['tenant'] + '-' + #context['user']}")
     void shouldCombineMapValues() throws Exception {
       Method method = WikiExamples.class.getMethod("processInContext", Map.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {Map.of("tenant", "tenant1", "user", "user123")});
+      Object[] args = new Object[] {Map.of("tenant", "tenant1", "user", "user123")};
 
       String result =
-          aspect.resolveKey("#{#context['tenant'] + '-' + #context['user']}", method, joinPoint);
+          SpELKeyResolver.resolve("#{#context['tenant'] + '-' + #context['user']}", method, args);
 
       assertEquals("tenant1-user123", result);
     }
@@ -640,11 +583,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{T(java.lang.String).valueOf(#orderId)}")
     void shouldCallStaticValueOf() throws Exception {
       Method method = WikiExamples.class.getMethod("processWithStaticMethod", Long.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {12345L});
+      Object[] args = new Object[] {12345L};
 
       String result =
-          aspect.resolveKey("#{T(java.lang.String).valueOf(#orderId)}", method, joinPoint);
+          SpELKeyResolver.resolve("#{T(java.lang.String).valueOf(#orderId)}", method, args);
 
       assertEquals("12345", result);
     }
@@ -653,10 +595,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{T(java.lang.Math).max(#a, #b)}")
     void shouldCallStaticMax() throws Exception {
       Method method = WikiExamples.class.getMethod("processMax", int.class, int.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {42, 100});
+      Object[] args = new Object[] {42, 100};
 
-      String result = aspect.resolveKey("#{T(java.lang.Math).max(#a, #b)}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{T(java.lang.Math).max(#a, #b)}", method, args);
 
       assertEquals("100", result);
     }
@@ -671,11 +612,9 @@ class WikiSpELExamplesTest {
     void shouldResolveUserProfile() throws Exception {
       Method method =
           WikiExamples.class.getMethod("updateProfile", String.class, WikiExamples.Profile.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {"user123", new WikiExamples.Profile("Bio", "avatar.png")});
+      Object[] args = new Object[] {"user123", new WikiExamples.Profile("Bio", "avatar.png")};
 
-      String result = aspect.resolveKey("#{'user-profile-' + #userId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'user-profile-' + #userId}", method, args);
 
       assertEquals("user-profile-user123", result);
     }
@@ -686,15 +625,13 @@ class WikiSpELExamplesTest {
       Method method =
           WikiExamples.class.getMethod(
               "updateSettings", WikiExamples.User.class, WikiExamples.Settings.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(
-              new Object[] {
-                new WikiExamples.User("456", "Alice", "alice@test.com"),
-                new WikiExamples.Settings("dark", "en")
-              });
+      Object[] args =
+          new Object[] {
+            new WikiExamples.User("456", "Alice", "alice@test.com"),
+            new WikiExamples.Settings("dark", "en")
+          };
 
-      String result = aspect.resolveKey("#{'user-settings-' + #user.id}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'user-settings-' + #user.id}", method, args);
 
       assertEquals("user-settings-456", result);
     }
@@ -703,10 +640,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{'document-' + #documentId}")
     void shouldResolveDocument() throws Exception {
       Method method = WikiExamples.class.getMethod("editDocument", String.class, String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"doc-789", "content"});
+      Object[] args = new Object[] {"doc-789", "content"};
 
-      String result = aspect.resolveKey("#{'document-' + #documentId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'document-' + #documentId}", method, args);
 
       assertEquals("document-doc-789", result);
     }
@@ -715,11 +651,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve #{'file-' + #path.hashCode()}")
     void shouldResolveFileHash() throws Exception {
       Method method = WikiExamples.class.getMethod("writeFile", Path.class, byte[].class);
-      when(methodSignature.getMethod()).thenReturn(method);
       Path path = Path.of("/tmp/test.txt");
-      when(joinPoint.getArgs()).thenReturn(new Object[] {path, new byte[] {1, 2, 3}});
+      Object[] args = new Object[] {path, new byte[] {1, 2, 3}};
 
-      String result = aspect.resolveKey("#{'file-' + #path.hashCode()}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'file-' + #path.hashCode()}", method, args);
 
       assertEquals("file-" + path.hashCode(), result);
     }
@@ -729,10 +664,9 @@ class WikiSpELExamplesTest {
     void shouldResolveTenantUser() throws Exception {
       Method method =
           WikiExamples.class.getMethod("updateTenantUserColon", String.class, String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"tenant1", "user123"});
+      Object[] args = new Object[] {"tenant1", "user123"};
 
-      String result = aspect.resolveKey("#{#tenantId + ':user:' + #userId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{#tenantId + ':user:' + #userId}", method, args);
 
       assertEquals("tenant1:user:user123", result);
     }
@@ -742,11 +676,11 @@ class WikiSpELExamplesTest {
     void shouldResolveInventory() throws Exception {
       Method method =
           WikiExamples.class.getMethod("updateInventory", String.class, String.class, int.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"WH001", "PROD123", 50});
+      Object[] args = new Object[] {"WH001", "PROD123", 50};
 
       String result =
-          aspect.resolveKey("#{'inventory-' + #warehouseId + '-' + #productId}", method, joinPoint);
+          SpELKeyResolver.resolve(
+              "#{'inventory-' + #warehouseId + '-' + #productId}", method, args);
 
       assertEquals("inventory-WH001-PROD123", result);
     }
@@ -755,15 +689,14 @@ class WikiSpELExamplesTest {
     @DisplayName("Should resolve hourly task with truncated instant")
     void shouldResolveHourlyTask() throws Exception {
       Method method = WikiExamples.class.getMethod("hourlyTask", Instant.class);
-      when(methodSignature.getMethod()).thenReturn(method);
       Instant instant = Instant.parse("2024-01-15T14:30:45Z");
-      when(joinPoint.getArgs()).thenReturn(new Object[] {instant});
+      Object[] args = new Object[] {instant};
 
       String result =
-          aspect.resolveKey(
+          SpELKeyResolver.resolve(
               "#{'hourly-' + #instant.truncatedTo(T(java.time.temporal.ChronoUnit).HOURS)}",
               method,
-              joinPoint);
+              args);
 
       assertEquals("hourly-" + instant.truncatedTo(ChronoUnit.HOURS), result);
     }
@@ -777,10 +710,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should treat 'order#123' as literal")
     void shouldTreatOrderHashAsLiteral() throws Exception {
       Method method = WikiExamples.class.getMethod("processOrderLiteral");
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {});
+      Object[] args = new Object[] {};
 
-      String result = aspect.resolveKey("order#123", method, joinPoint);
+      String result = SpELKeyResolver.resolve("order#123", method, args);
 
       assertEquals("order#123", result);
     }
@@ -789,10 +721,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should treat 'task#end' as literal")
     void shouldTreatTaskHashAsLiteral() throws Exception {
       Method method = WikiExamples.class.getMethod("endTask");
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {});
+      Object[] args = new Object[] {};
 
-      String result = aspect.resolveKey("task#end", method, joinPoint);
+      String result = SpELKeyResolver.resolve("task#end", method, args);
 
       assertEquals("task#end", result);
     }
@@ -801,10 +732,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should treat 'item-#1' as literal")
     void shouldTreatItemHashAsLiteral() throws Exception {
       Method method = WikiExamples.class.getMethod("processItem");
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {});
+      Object[] args = new Object[] {};
 
-      String result = aspect.resolveKey("item-#1", method, joinPoint);
+      String result = SpELKeyResolver.resolve("item-#1", method, args);
 
       assertEquals("item-#1", result);
     }
@@ -813,10 +743,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should treat 'prefix#middle#suffix' as literal")
     void shouldTreatMultipleHashesAsLiteral() throws Exception {
       Method method = WikiExamples.class.getMethod("processMultipleHashes");
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {});
+      Object[] args = new Object[] {};
 
-      String result = aspect.resolveKey("prefix#middle#suffix", method, joinPoint);
+      String result = SpELKeyResolver.resolve("prefix#middle#suffix", method, args);
 
       assertEquals("prefix#middle#suffix", result);
     }
@@ -830,11 +759,10 @@ class WikiSpELExamplesTest {
     @DisplayName("Should normalize email with toLowerCase and trim")
     void shouldNormalizeEmail() throws Exception {
       Method method = WikiExamples.class.getMethod("processEmailNormalized", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"  JOHN@EXAMPLE.COM  "});
+      Object[] args = new Object[] {"  JOHN@EXAMPLE.COM  "};
 
       String result =
-          aspect.resolveKey("#{'email-' + #email.toLowerCase().trim()}", method, joinPoint);
+          SpELKeyResolver.resolve("#{'email-' + #email.toLowerCase().trim()}", method, args);
 
       assertEquals("email-john@example.com", result);
     }
@@ -843,10 +771,9 @@ class WikiSpELExamplesTest {
     @DisplayName("Should use prefix 'read:' for read operations")
     void shouldUseReadPrefix() throws Exception {
       Method method = WikiExamples.class.getMethod("readDocument", String.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs()).thenReturn(new Object[] {"doc-123"});
+      Object[] args = new Object[] {"doc-123"};
 
-      String result = aspect.resolveKey("#{'read:' + #docId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'read:' + #docId}", method, args);
 
       assertEquals("read:doc-123", result);
     }
@@ -856,11 +783,9 @@ class WikiSpELExamplesTest {
     void shouldUseWritePrefix() throws Exception {
       Method method =
           WikiExamples.class.getMethod("writeDocument", String.class, WikiExamples.Document.class);
-      when(methodSignature.getMethod()).thenReturn(method);
-      when(joinPoint.getArgs())
-          .thenReturn(new Object[] {"doc-123", new WikiExamples.Document("content")});
+      Object[] args = new Object[] {"doc-123", new WikiExamples.Document("content")};
 
-      String result = aspect.resolveKey("#{'write:' + #docId}", method, joinPoint);
+      String result = SpELKeyResolver.resolve("#{'write:' + #docId}", method, args);
 
       assertEquals("write:doc-123", result);
     }

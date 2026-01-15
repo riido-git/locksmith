@@ -5,22 +5,23 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LeaseExpirationBehavior;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.exception.LockNotAcquiredException;
-import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
-import in.riido.locksmith.handler.ReturnDefaultHandler;
-import in.riido.locksmith.handler.ThrowExceptionHandler;
+import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
+import in.riido.locksmith.handler.lock.LockThrowExceptionHandler;
+import in.riido.locksmith.models.LockContext;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -28,11 +29,13 @@ import org.junit.jupiter.api.Test;
 import org.redisson.api.RLock;
 import org.redisson.api.RReadWriteLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.ApplicationContext;
 
 @DisplayName("DistributedLockAspect Tests")
 class DistributedLockAspectTest {
 
   private RedissonClient redissonClient;
+  private ApplicationContext applicationContext;
   private DistributedLockAspect aspect;
   private ProceedingJoinPoint joinPoint;
   private MethodSignature methodSignature;
@@ -41,9 +44,13 @@ class DistributedLockAspectTest {
   @BeforeEach
   void setUp() {
     redissonClient = mock(RedissonClient.class);
+    applicationContext = mock(ApplicationContext.class);
     LocksmithProperties lockProperties =
-        new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false);
-    aspect = new DistributedLockAspect(redissonClient, lockProperties);
+        new LocksmithProperties(
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false),
+            null);
+    aspect = new DistributedLockAspect(redissonClient, lockProperties, applicationContext);
     joinPoint = mock(ProceedingJoinPoint.class);
     methodSignature = mock(MethodSignature.class);
     lock = mock(RLock.class);
@@ -57,7 +64,7 @@ class DistributedLockAspectTest {
 
   private void setupAnnotation(
       String key,
-      LockAcquisitionMode mode,
+      AcquisitionMode mode,
       String leaseTime,
       String waitTime,
       Class<? extends LockSkipHandler> skipHandler) {
@@ -73,7 +80,7 @@ class DistributedLockAspectTest {
 
   private void setupAnnotation(
       String key,
-      LockAcquisitionMode mode,
+      AcquisitionMode mode,
       String leaseTime,
       String waitTime,
       Class<? extends LockSkipHandler> skipHandler,
@@ -84,7 +91,7 @@ class DistributedLockAspectTest {
 
   private void setupAnnotation(
       String key,
-      LockAcquisitionMode mode,
+      AcquisitionMode mode,
       String leaseTime,
       String waitTime,
       Class<? extends LockSkipHandler> skipHandler,
@@ -95,7 +102,7 @@ class DistributedLockAspectTest {
 
   private void setupAnnotation(
       String key,
-      LockAcquisitionMode mode,
+      AcquisitionMode mode,
       String leaseTime,
       String waitTime,
       Class<? extends LockSkipHandler> skipHandler,
@@ -157,7 +164,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should acquire lock and execute method when lock is available")
     void shouldAcquireLockAndExecuteMethod() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -175,7 +182,7 @@ class DistributedLockAspectTest {
         "Should skip execution and return null when lock is not available with RETURN_DEFAULT")
     void shouldSkipExecutionWhenLockNotAvailable() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -190,7 +197,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use zero wait time for SKIP_IMMEDIATELY mode")
     void shouldUseZeroWaitTime() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(eq(0L), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -209,7 +216,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should handle InterruptedException and return default with RETURN_DEFAULT")
     void shouldHandleInterruptedExceptionWithReturnDefault() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
           .thenThrow(new InterruptedException());
@@ -226,7 +233,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should handle InterruptedException and throw exception with THROW_EXCEPTION")
     void shouldHandleInterruptedExceptionWithThrowException() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
           .thenThrow(new InterruptedException());
@@ -242,7 +249,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should restore interrupt status after InterruptedException")
     void shouldRestoreInterruptStatus() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS))
           .thenThrow(new InterruptedException());
@@ -262,7 +269,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should wait for lock and execute method when lock becomes available")
     void shouldWaitForLockAndExecuteMethod() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -279,7 +286,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should skip execution and return null after wait timeout with RETURN_DEFAULT")
     void shouldSkipExecutionAfterWaitTimeout() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -293,7 +300,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use configured wait time for WAIT_AND_SKIP mode")
     void shouldUseConfiguredWaitTime() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(eq(60000L), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -312,7 +319,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should release lock after successful method execution")
     void shouldReleaseLockAfterSuccessfulExecution() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -327,7 +334,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should release lock when method throws exception")
     void shouldReleaseLockWhenMethodThrowsException() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -342,7 +349,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should handle IllegalMonitorStateException during unlock gracefully")
     void shouldHandleIllegalMonitorStateExceptionDuringUnlock() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(joinPoint.proceed()).thenReturn("result");
@@ -362,7 +369,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use custom lease time from annotation")
     void shouldUseCustomLeaseTimeFromAnnotation() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "5m", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "5m", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -376,7 +383,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use custom wait time from annotation")
     void shouldUseCustomWaitTimeFromAnnotation() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "30s", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "30s", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(30000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -396,10 +403,10 @@ class DistributedLockAspectTest {
     void shouldParseIso8601FormatForLeaseTime() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "PT5M",
           "",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -413,7 +420,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should parse ISO-8601 format for wait time (PT30S)")
     void shouldParseIso8601FormatForWaitTime() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "PT30S", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "PT30S", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(30000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -427,7 +434,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should parse simple format with seconds (45s)")
     void shouldParseSimpleFormatWithSeconds() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "45s", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "45s", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(45000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -441,7 +448,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should parse simple format with minutes (2m)")
     void shouldParseSimpleFormatWithMinutes() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "2m", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "2m", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 120000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -455,7 +462,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should parse simple format with hours (1h)")
     void shouldParseSimpleFormatWithHours() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "1h", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "1h", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 3600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -470,10 +477,10 @@ class DistributedLockAspectTest {
     void shouldParseIso8601FormatWithHours() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "PT1H",
           "",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 3600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -488,10 +495,10 @@ class DistributedLockAspectTest {
     void shouldParseIso8601CombinedFormat() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "PT1H30M",
           "",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 5400000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -505,7 +512,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use default when duration is empty string")
     void shouldUseDefaultWhenDurationIsEmpty() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -520,10 +527,10 @@ class DistributedLockAspectTest {
     void shouldUseDefaultWhenDurationIsBlank() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "   ",
           "",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -538,10 +545,10 @@ class DistributedLockAspectTest {
     void shouldPreserveSubSecondPrecisionForLeaseTime() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "500ms",
           "",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 500, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -555,7 +562,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should preserve sub-second precision for waitTime (750ms)")
     void shouldPreserveSubSecondPrecisionForWaitTime() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.WAIT_AND_SKIP, "", "750ms", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.WAIT_AND_SKIP, "", "750ms", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(750, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -570,10 +577,10 @@ class DistributedLockAspectTest {
     void shouldPreserveSubSecondPrecisionForBothDurations() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.WAIT_AND_SKIP,
+          AcquisitionMode.WAIT_AND_SKIP,
           "250ms",
           "100ms",
-          ThrowExceptionHandler.class);
+          LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(100, 250, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -592,7 +599,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use key prefix from properties")
     void shouldUseKeyPrefixFromProperties() throws Throwable {
       setupAnnotation(
-          "my-task", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "my-task", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:my-task")).thenReturn(lock);
       when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(false);
 
@@ -605,7 +612,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should throw IllegalArgumentException when key is empty")
     void shouldThrowIllegalArgumentExceptionWhenKeyIsEmpty() {
       setupAnnotation(
-          "", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
 
       IllegalArgumentException thrown =
           assertThrows(
@@ -618,7 +625,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should throw IllegalArgumentException when key is blank")
     void shouldThrowIllegalArgumentExceptionWhenKeyIsBlank() {
       setupAnnotation(
-          "   ", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "   ", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
 
       IllegalArgumentException thrown =
           assertThrows(
@@ -636,7 +643,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should throw LockNotAcquiredException when lock fails with THROW_EXCEPTION")
     void shouldThrowLockNotAcquiredExceptionWhenLockFails() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -653,7 +660,7 @@ class DistributedLockAspectTest {
     void shouldReturnFalseForBooleanPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(boolean.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -667,7 +674,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForIntPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(int.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -681,7 +688,7 @@ class DistributedLockAspectTest {
     void shouldReturnNullForVoidMethods() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(void.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -695,7 +702,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForLongPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(long.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -709,7 +716,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForDoublePrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(double.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -723,7 +730,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForFloatPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(float.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -737,7 +744,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForBytePrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(byte.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -751,7 +758,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForShortPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(short.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -765,7 +772,7 @@ class DistributedLockAspectTest {
     void shouldReturnNullCharForCharPrimitive() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(char.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -779,7 +786,7 @@ class DistributedLockAspectTest {
     void shouldReturnNullForObjectReturnType() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(String.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -793,7 +800,7 @@ class DistributedLockAspectTest {
     void shouldReturnFalseForBooleanWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Boolean.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -807,7 +814,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForIntegerWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Integer.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -821,7 +828,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForLongWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Long.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -835,7 +842,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForDoubleWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Double.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -849,7 +856,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForFloatWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Float.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -863,7 +870,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForByteWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Byte.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -877,7 +884,7 @@ class DistributedLockAspectTest {
     void shouldReturnZeroForShortWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Short.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -891,7 +898,7 @@ class DistributedLockAspectTest {
     void shouldReturnNullCharForCharacterWrapper() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(Character.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -912,8 +919,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when null")
       void shouldUseDefaultLeaseTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(null, Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(null, Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -921,8 +928,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when zero")
       void shouldUseDefaultLeaseTimeWhenZero() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ZERO, Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ZERO, Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -930,8 +938,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default lease time when negative")
       void shouldUseDefaultLeaseTimeWhenNegative() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -939,8 +948,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom lease time when positive")
       void shouldUseCustomLeaseTimeWhenPositive() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
       }
@@ -948,8 +958,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in seconds")
       void shouldAcceptLeaseTimeInSeconds() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofSeconds(300), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofSeconds(300), props.leaseTime());
@@ -958,8 +968,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in hours")
       void shouldAcceptLeaseTimeInHours() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofHours(1), props.leaseTime());
       }
@@ -967,8 +978,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept lease time in millis")
       void shouldAcceptLeaseTimeInMillis() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMillis(5000), Duration.ofSeconds(60), "lock:", false);
 
         assertEquals(Duration.ofMillis(5000), props.leaseTime());
@@ -982,8 +993,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default wait time when null")
       void shouldUseDefaultWaitTimeWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), null, "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(Duration.ofMinutes(10), null, "lock:", false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
       }
@@ -991,8 +1002,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default wait time when negative")
       void shouldUseDefaultWaitTimeWhenNegative() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(-30), "lock:", false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1001,8 +1012,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should allow zero wait time")
       void shouldAllowZeroWaitTime() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ZERO, "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ZERO, "lock:", false);
 
         assertEquals(Duration.ZERO, props.waitTime());
       }
@@ -1010,8 +1022,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom wait time when positive")
       void shouldUseCustomWaitTimeWhenPositive() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false);
 
         assertEquals(Duration.ofSeconds(90), props.waitTime());
       }
@@ -1019,8 +1032,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept wait time in minutes")
       void shouldAcceptWaitTimeInMinutes() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false);
 
         assertEquals(Duration.ofMinutes(2), props.waitTime());
       }
@@ -1028,8 +1042,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should accept wait time in millis")
       void shouldAcceptWaitTimeInMillis() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false);
 
         assertEquals(Duration.ofMillis(500), props.waitTime());
       }
@@ -1042,8 +1057,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when null")
       void shouldUseDefaultKeyPrefixWhenNull() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), null, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1051,8 +1067,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when empty")
       void shouldUseDefaultKeyPrefixWhenEmpty() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1060,8 +1077,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when blank with spaces")
       void shouldUseDefaultKeyPrefixWhenBlankWithSpaces() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1069,8 +1087,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use default key prefix when blank with tabs")
       void shouldUseDefaultKeyPrefixWhenBlankWithTabs() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1078,8 +1097,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom key prefix when valid")
       void shouldUseCustomKeyPrefixWhenValid() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false);
 
         assertEquals("myapp:", props.keyPrefix());
@@ -1088,8 +1107,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use custom key prefix without colon")
       void shouldUseCustomKeyPrefixWithoutColon() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "distributed-lock", false);
 
         assertEquals("distributed-lock", props.keyPrefix());
@@ -1098,8 +1117,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should preserve key prefix with special characters")
       void shouldPreserveKeyPrefixWithSpecialCharacters() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "app:env:lock:", false);
 
         assertEquals("app:env:lock:", props.keyPrefix());
@@ -1113,7 +1132,7 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should create instance with all default values")
       void shouldCreateInstanceWithAllDefaultValues() {
-        LocksmithProperties props = LocksmithProperties.defaults();
+        LocksmithProperties.LockProperties props = LocksmithProperties.LockProperties.defaults();
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1123,11 +1142,11 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should match default constants")
       void shouldMatchDefaultConstants() {
-        LocksmithProperties props = LocksmithProperties.defaults();
+        LocksmithProperties.LockProperties props = LocksmithProperties.LockProperties.defaults();
 
-        assertEquals(LocksmithProperties.DEFAULT_LEASE_TIME, props.leaseTime());
-        assertEquals(LocksmithProperties.DEFAULT_WAIT_TIME, props.waitTime());
-        assertEquals(LocksmithProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_LEASE_TIME, props.leaseTime());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_WAIT_TIME, props.waitTime());
+        assertEquals(LocksmithProperties.LockProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
       }
     }
 
@@ -1138,7 +1157,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use all defaults when all parameters are null")
       void shouldUseAllDefaultsWhenAllParametersAreNull() {
-        LocksmithProperties props = new LocksmithProperties(null, null, null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(null, null, null, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1153,8 +1173,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should use all custom values when valid")
       void shouldUseAllCustomValuesWhenValid() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(15), Duration.ofSeconds(90), "mylock:", false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
@@ -1165,8 +1185,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle mixed valid and invalid values")
       void shouldHandleMixedValidAndInvalidValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(30), props.waitTime());
@@ -1176,8 +1197,9 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle very large duration values")
       void shouldHandleVeryLargeDurationValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(Duration.ofDays(1), Duration.ofHours(2), "biglock:", false);
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
+                Duration.ofDays(1), Duration.ofHours(2), "biglock:", false);
 
         assertEquals(Duration.ofDays(1), props.leaseTime());
         assertEquals(Duration.ofHours(2), props.waitTime());
@@ -1187,8 +1209,8 @@ class DistributedLockAspectTest {
       @Test
       @DisplayName("Should handle very small positive duration values")
       void shouldHandleVerySmallPositiveDurationValues() {
-        LocksmithProperties props =
-            new LocksmithProperties(
+        LocksmithProperties.LockProperties props =
+            new LocksmithProperties.LockProperties(
                 Duration.ofNanos(1000000), Duration.ofMillis(1), "smalllock:", false);
 
         assertEquals(Duration.ofNanos(1000000), props.leaseTime());
@@ -1372,10 +1394,10 @@ class DistributedLockAspectTest {
     void shouldUseReentrantLockForReentrantType() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
@@ -1394,10 +1416,10 @@ class DistributedLockAspectTest {
     void shouldUseReadLockForReadType() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.READ);
       when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1417,10 +1439,10 @@ class DistributedLockAspectTest {
     void shouldUseWriteLockForWriteType() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.WRITE);
       when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1440,10 +1462,10 @@ class DistributedLockAspectTest {
     void shouldReleaseReadLockAfterExecution() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.READ);
       when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1459,10 +1481,10 @@ class DistributedLockAspectTest {
     void shouldReleaseWriteLockAfterExecution() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.WRITE);
       when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1478,10 +1500,10 @@ class DistributedLockAspectTest {
     void shouldSkipWhenReadLockNotAcquired() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ReturnDefaultHandler.class,
+          LockReturnDefaultHandler.class,
           LockType.READ);
       when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1496,10 +1518,10 @@ class DistributedLockAspectTest {
     void shouldThrowExceptionWhenWriteLockNotAcquired() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.WRITE);
       when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1511,10 +1533,10 @@ class DistributedLockAspectTest {
     void shouldUseCustomLeaseTimeWithReadLock() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "5m",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.READ);
       when(readLock.tryLock(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1530,10 +1552,10 @@ class DistributedLockAspectTest {
     void shouldUseWaitAndSkipModeWithWriteLock() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.WAIT_AND_SKIP,
+          AcquisitionMode.WAIT_AND_SKIP,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.WRITE);
       when(writeLock.tryLock(60000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(writeLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1549,10 +1571,10 @@ class DistributedLockAspectTest {
     void shouldHandleExceptionAndReleaseReadLock() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.READ);
       when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
       when(readLock.isHeldByCurrentThread()).thenReturn(true);
@@ -1573,10 +1595,10 @@ class DistributedLockAspectTest {
     void shouldNotTriggerLeaseExpirationWhenWithinLeaseTime() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "10m",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
@@ -1595,10 +1617,10 @@ class DistributedLockAspectTest {
     void shouldThrowLeaseExpiredExceptionWhenExecutionExceedsLeaseTime() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "1ms",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
@@ -1625,10 +1647,10 @@ class DistributedLockAspectTest {
     void shouldIgnoreLeaseExpirationWithIgnoreBehavior() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "1ms",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
@@ -1651,10 +1673,10 @@ class DistributedLockAspectTest {
     void shouldLogWarningWhenExecutionExceedsLeaseTime() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "1ms",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.LOG_WARNING);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
@@ -1678,10 +1700,10 @@ class DistributedLockAspectTest {
     void shouldStillReleaseLockAfterLeaseExpirationException() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "1ms",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
@@ -1724,7 +1746,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use ThrowExceptionHandler when specified")
     void shouldUseThrowExceptionHandler() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ThrowExceptionHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockThrowExceptionHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1735,7 +1757,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use ReturnDefaultHandler when specified")
     void shouldUseReturnDefaultHandler() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1748,7 +1770,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should use custom handler that returns specific value")
     void shouldUseCustomHandlerReturningSpecificValue() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", FallbackValueHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", FallbackValueHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1761,7 +1783,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should pass correct context to custom handler")
     void shouldPassCorrectContextToCustomHandler() throws Throwable {
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ContextCapturingHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", ContextCapturingHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
       when(joinPoint.getArgs()).thenReturn(new Object[] {"arg1", 42});
@@ -1779,7 +1801,7 @@ class DistributedLockAspectTest {
     void returnDefaultHandlerShouldReturnFalseForBoolean() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(boolean.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1793,7 +1815,7 @@ class DistributedLockAspectTest {
     void returnDefaultHandlerShouldReturnZeroForInt() throws Throwable {
       when(methodSignature.getReturnType()).thenReturn(int.class);
       setupAnnotation(
-          "test-lock", LockAcquisitionMode.SKIP_IMMEDIATELY, "", "", ReturnDefaultHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", LockReturnDefaultHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1806,11 +1828,7 @@ class DistributedLockAspectTest {
     @DisplayName("Should throw IllegalStateException when handler has no public no-arg constructor")
     void shouldThrowIllegalStateExceptionWhenHandlerCannotBeInstantiated() throws Throwable {
       setupAnnotation(
-          "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
-          "",
-          "",
-          PrivateConstructorHandler.class);
+          "test-lock", AcquisitionMode.SKIP_IMMEDIATELY, "", "", PrivateConstructorHandler.class);
       when(redissonClient.getLock("lock:test-lock")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
@@ -1827,7 +1845,7 @@ class DistributedLockAspectTest {
   /** Test handler that returns a specific fallback value. */
   public static class FallbackValueHandler implements LockSkipHandler {
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       return "fallback-value";
     }
   }
@@ -1837,7 +1855,7 @@ class DistributedLockAspectTest {
     public static LockContext capturedContext;
 
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       capturedContext = context;
       return null;
     }
@@ -1850,7 +1868,7 @@ class DistributedLockAspectTest {
     }
 
     @Override
-    public Object handle(LockContext context) {
+    public Object handle(@NonNull LockContext context) {
       return null;
     }
   }
@@ -1864,10 +1882,10 @@ class DistributedLockAspectTest {
     void shouldPassNegativeOneAsLeaseTimeWhenAutoRenewEnabled() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -1887,10 +1905,10 @@ class DistributedLockAspectTest {
     void shouldIgnoreLeaseTimeWhenAutoRenewEnabled() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "5m",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -1912,10 +1930,10 @@ class DistributedLockAspectTest {
     void shouldUseConfiguredWaitTimeWhenAutoRenewEnabled() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.WAIT_AND_SKIP,
+          AcquisitionMode.WAIT_AND_SKIP,
           "",
           "30s",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -1935,10 +1953,10 @@ class DistributedLockAspectTest {
     void shouldSkipLeaseExpirationCheckWhenAutoRenewEnabled() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.THROW_EXCEPTION,
           true);
@@ -1963,10 +1981,10 @@ class DistributedLockAspectTest {
     void shouldAcquireLockAndExecuteMethodWithAutoRenew() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -1987,10 +2005,10 @@ class DistributedLockAspectTest {
     void shouldSkipExecutionWhenLockNotAcquiredWithAutoRenew() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ReturnDefaultHandler.class,
+          LockReturnDefaultHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -2008,10 +2026,10 @@ class DistributedLockAspectTest {
     void shouldReleaseLockAfterExecutionWithAutoRenew() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -2030,10 +2048,10 @@ class DistributedLockAspectTest {
     void shouldReleaseLockWhenMethodThrowsExceptionWithAutoRenew() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -2052,10 +2070,10 @@ class DistributedLockAspectTest {
     void shouldUseNormalLeaseTimeWhenAutoRenewDisabled() throws Throwable {
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "5m",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.REENTRANT,
           LeaseExpirationBehavior.IGNORE,
           false);
@@ -2079,10 +2097,10 @@ class DistributedLockAspectTest {
 
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.READ,
           LeaseExpirationBehavior.IGNORE,
           true);
@@ -2106,10 +2124,10 @@ class DistributedLockAspectTest {
 
       setupAnnotation(
           "test-lock",
-          LockAcquisitionMode.SKIP_IMMEDIATELY,
+          AcquisitionMode.SKIP_IMMEDIATELY,
           "",
           "",
-          ThrowExceptionHandler.class,
+          LockThrowExceptionHandler.class,
           LockType.WRITE,
           LeaseExpirationBehavior.IGNORE,
           true);

@@ -1,14 +1,16 @@
 package in.riido.locksmith.aspect;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.LeaseExpirationBehavior;
-import in.riido.locksmith.LockAcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
-import in.riido.locksmith.handler.LockContext;
 import in.riido.locksmith.handler.LockSkipHandler;
-import java.lang.reflect.Method;
+import in.riido.locksmith.models.LockContext;
+import in.riido.locksmith.support.DurationResolver;
+import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,20 +19,17 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.convert.DurationStyle;
-import org.springframework.context.expression.MethodBasedEvaluationContext;
-import org.springframework.core.DefaultParameterNameDiscoverer;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
-import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.core.annotation.Order;
-import org.springframework.expression.EvaluationContext;
-import org.springframework.expression.Expression;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 
 /**
  * Aspect that handles distributed locking for methods annotated with {@link DistributedLock}. Uses
@@ -47,25 +46,28 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 public class DistributedLockAspect {
 
   private static final Logger LOG = LoggerFactory.getLogger(DistributedLockAspect.class);
-  private static final ExpressionParser EXPRESSION_PARSER = new SpelExpressionParser();
-  private static final ParameterNameDiscoverer PARAMETER_NAME_DISCOVERER =
-      new DefaultParameterNameDiscoverer();
-  private static final Map<Class<? extends LockSkipHandler>, LockSkipHandler> HANDLER_CACHE =
-      new ConcurrentHashMap<>(5);
-  private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
   private final RedissonClient redissonClient;
-  private final LocksmithProperties lockProperties;
+  private final LockProperties lockProperties;
+  private final ApplicationContext applicationContext;
+
+  private final Map<Class<? extends LockSkipHandler>, LockSkipHandler> handlerCache =
+      new ConcurrentHashMap<>(5);
 
   /**
    * Constructs a new DistributedLockAspect.
    *
    * @param redissonClient the Redisson client for Redis operations
-   * @param lockProperties the configuration properties
+   * @param properties the configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
    */
-  public DistributedLockAspect(RedissonClient redissonClient, LocksmithProperties lockProperties) {
+  public DistributedLockAspect(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext) {
     this.redissonClient = redissonClient;
-    this.lockProperties = lockProperties;
+    this.lockProperties = properties.lock();
+    this.applicationContext = applicationContext;
   }
 
   /**
@@ -76,7 +78,8 @@ public class DistributedLockAspect {
    * @throws Throwable if the method execution throws an exception
    */
   @Around("@annotation(in.riido.locksmith.DistributedLock)")
-  public Object handleDistributedLock(ProceedingJoinPoint joinPoint) throws Throwable {
+  @Nullable
+  public Object handleDistributedLock(@NonNull ProceedingJoinPoint joinPoint) throws Throwable {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedLock distributedLock =
         signature.getMethod().getAnnotation(DistributedLock.class);
@@ -91,7 +94,7 @@ public class DistributedLockAspect {
               + signature.getName());
     }
 
-    final String resolvedKey = resolveKey(distributedLock.key(), signature.getMethod(), joinPoint);
+    final String resolvedKey = SpELKeyResolver.resolve(distributedLock.key(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
     final RLock lock = getLock(lockKey, distributedLock.type());
     final boolean autoRenew = distributedLock.autoRenew();
@@ -116,9 +119,9 @@ public class DistributedLockAspect {
     final Duration leaseTime =
         autoRenew
             ? Duration.ofMillis(-1)
-            : resolveDuration(distributedLock.leaseTime(), lockProperties.leaseTime());
+            : DurationResolver.resolve(distributedLock.leaseTime(), lockProperties.leaseTime());
     final Duration waitTime =
-        resolveDuration(distributedLock.waitTime(), lockProperties.waitTime());
+        DurationResolver.resolve(distributedLock.waitTime(), lockProperties.waitTime());
 
     if (debugMode) {
       LOG.info(
@@ -202,11 +205,11 @@ public class DistributedLockAspect {
    * @param methodName the method name
    */
   private void checkLeaseExpiration(
-      LeaseExpirationBehavior behavior,
-      Duration leaseTime,
+      @NonNull LeaseExpirationBehavior behavior,
+      @NonNull Duration leaseTime,
       long executionTimeMs,
-      String lockKey,
-      String methodName) {
+      @NonNull String lockKey,
+      @NonNull String methodName) {
 
     final long leaseTimeMs = leaseTime.toMillis();
 
@@ -232,7 +235,8 @@ public class DistributedLockAspect {
     }
   }
 
-  private void releaseLock(RLock lock, String lockKey, String methodName) {
+  private void releaseLock(
+      @NonNull RLock lock, @NonNull String lockKey, @NonNull String methodName) {
     try {
       lock.unlock();
       LOG.info("Lock [{}] released for [{}]", lockKey, methodName);
@@ -253,7 +257,8 @@ public class DistributedLockAspect {
    * @param lockType the type of lock to acquire
    * @return the appropriate RLock instance
    */
-  private RLock getLock(String lockKey, LockType lockType) {
+  @NonNull
+  private RLock getLock(@NonNull String lockKey, @NonNull LockType lockType) {
     return switch (lockType) {
       case REENTRANT -> redissonClient.getLock(lockKey);
       case READ -> redissonClient.getReadWriteLock(lockKey).readLock();
@@ -262,7 +267,10 @@ public class DistributedLockAspect {
   }
 
   private boolean tryAcquireLock(
-      RLock lock, LockAcquisitionMode mode, Duration waitTime, Duration leaseTime)
+      @NonNull RLock lock,
+      @NonNull AcquisitionMode mode,
+      @NonNull Duration waitTime,
+      @NonNull Duration leaseTime)
       throws InterruptedException {
     final long leaseTimeMs = leaseTime.toMillis();
     final long waitTimeMs = waitTime.toMillis();
@@ -272,7 +280,8 @@ public class DistributedLockAspect {
     };
   }
 
-  private String formatMethodSignature(ProceedingJoinPoint joinPoint) {
+  @NonNull
+  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
   }
@@ -281,8 +290,34 @@ public class DistributedLockAspect {
    * Gets a cached instance of the specified handler class, creating it if necessary.
    *
    * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
-   * reflection-based instantiation on every lock skip. Handler instances are cached per class type
-   * and reused across all invocations.
+   * instantiation on every lock skip. Handler instances are cached per class type and reused across
+   * all invocations.
+   *
+   * <p>Handler resolution follows this order:
+   *
+   * <ol>
+   *   <li>Look up the handler as a Spring bean from ApplicationContext by type
+   *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
+   * </ol>
+   *
+   * <p>This allows handlers to be defined as Spring beans with dependency injection:
+   *
+   * <pre>{@code
+   * @Component
+   * public class AlertingSkipHandler implements LockSkipHandler {
+   *     private final AlertService alertService;
+   *
+   *     public AlertingSkipHandler(AlertService alertService) {
+   *         this.alertService = alertService;
+   *     }
+   *
+   *     @Override
+   *     public Object handle(LockContext context) {
+   *         alertService.sendAlert("Lock failed: " + context.lockKey());
+   *         return null;
+   *     }
+   * }
+   * }</pre>
    *
    * <p><b>Important:</b> Handler classes must be stateless and thread-safe, as a single instance
    * will be shared across all concurrent invocations.
@@ -291,27 +326,68 @@ public class DistributedLockAspect {
    * @return a cached or newly created instance of the handler
    * @throws IllegalStateException if the handler cannot be instantiated
    */
-  private LockSkipHandler getHandlerInstance(Class<? extends LockSkipHandler> handlerClass) {
-    return HANDLER_CACHE.computeIfAbsent(
+  @NonNull
+  private LockSkipHandler getHandlerInstance(
+      @NonNull Class<? extends LockSkipHandler> handlerClass) {
+    return handlerCache.computeIfAbsent(
         handlerClass,
         clazz -> {
+          // First, try to get the handler as a Spring bean (only if context is active)
+          if (isApplicationContextActive()) {
+            try {
+              LockSkipHandler bean = applicationContext.getBean(clazz);
+              if (bean != null) {
+                return bean;
+              }
+            } catch (BeansException ignored) {
+              // Bean not found, will fall back to reflection
+            }
+          } else {
+            if (Boolean.TRUE.equals(lockProperties.debug())) {
+              LOG.info(
+                  "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
+                  clazz.getName());
+            }
+          }
+          // Not a Spring bean, fall back to reflection
+          if (Boolean.TRUE.equals(lockProperties.debug())) {
+            LOG.info(
+                "Handler {} not found as Spring bean, falling back to reflection-based instantiation",
+                clazz.getName());
+          }
+
+          // Fall back to reflection-based instantiation
           try {
             return clazz.getDeclaredConstructor().newInstance();
           } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(
                 "Failed to instantiate skip handler: "
                     + clazz.getName()
-                    + ". Ensure it has a public no-argument constructor.",
+                    + ". Ensure it is a Spring bean or has a public no-argument constructor.",
                 e);
           }
         });
   }
 
+  /**
+   * Checks if the application context is active and can be used for bean lookups.
+   *
+   * @return true if the context is active, false otherwise
+   */
+  private boolean isApplicationContextActive() {
+    if (applicationContext instanceof ConfigurableApplicationContext configurableContext) {
+      return configurableContext.isActive();
+    }
+    // For non-configurable contexts, assume active
+    return true;
+  }
+
+  @Nullable
   private Object handleSkip(
-      DistributedLock annotation,
-      ProceedingJoinPoint joinPoint,
-      String lockKey,
-      String methodName) {
+      @NonNull DistributedLock annotation,
+      @NonNull ProceedingJoinPoint joinPoint,
+      @NonNull String lockKey,
+      @NonNull String methodName) {
     final LockSkipHandler handler = getHandlerInstance(annotation.skipHandler());
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final LockContext context =
@@ -322,89 +398,5 @@ public class DistributedLockAspect {
             joinPoint.getArgs(),
             signature.getReturnType());
     return handler.handle(context);
-  }
-
-  /**
-   * Resolves a duration from the given string, falling back to the default if blank.
-   *
-   * @param durationString the duration string (e.g., "10m", "30s", "PT10M")
-   * @param defaultValue the default value to use if the string is blank
-   * @return the resolved Duration, or the default value if the string is blank
-   * @throws IllegalArgumentException if the value is not a known style or cannot be * parsed
-   */
-  private Duration resolveDuration(String durationString, Duration defaultValue) {
-    if (durationString == null || durationString.isBlank()) {
-      return defaultValue;
-    }
-    return DurationStyle.detectAndParse(durationString);
-  }
-
-  /**
-   * Resolves the lock key, evaluating SpEL expressions if present.
-   *
-   * <p>SpEL expressions must be wrapped in <code>#{...}</code> syntax: <code>#{#userId}</code>,
-   * <code>#{'user-' + #id}</code>
-   *
-   * <p>Literal keys (without SpEL) are returned as-is and can contain any characters including
-   * <code>#</code>: <code>order#123</code>, <code>item-#1</code>, <code>task#</code>
-   *
-   * @param keyExpression the key expression (literal or SpEL)
-   * @param method the method being invoked
-   * @param joinPoint the join point for accessing method arguments
-   * @return the resolved key string
-   */
-  public String resolveKey(String keyExpression, Method method, ProceedingJoinPoint joinPoint) {
-    // Check for #{...} syntax for SpEL expressions
-    if (keyExpression.startsWith("#{") && keyExpression.endsWith("}")) {
-      return evaluateSpELExpression(
-          keyExpression.substring(2, keyExpression.length() - 1), method, joinPoint);
-    }
-
-    // No SpEL detected - return as literal key
-    return keyExpression;
-  }
-
-  /**
-   * Evaluates a SpEL expression and returns the resolved key.
-   *
-   * <p>SpEL expressions are cached after first parse to avoid repeated parsing overhead. The cache
-   * is bounded by the number of unique {@code @DistributedLock} annotations in the application.
-   *
-   * @param spELExpression the SpEL expression to evaluate (without #{} wrapper)
-   * @param method the method being invoked
-   * @param joinPoint the join point for accessing method arguments
-   * @return the resolved key string
-   * @throws IllegalArgumentException if the expression evaluates to null or blank
-   */
-  public String evaluateSpELExpression(
-      String spELExpression, Method method, ProceedingJoinPoint joinPoint) {
-    EvaluationContext context =
-        new MethodBasedEvaluationContext(
-            null, method, joinPoint.getArgs(), PARAMETER_NAME_DISCOVERER);
-
-    // Cache parsed expressions to avoid repeated parsing overhead
-    Expression expression =
-        EXPRESSION_CACHE.computeIfAbsent(spELExpression, EXPRESSION_PARSER::parseExpression);
-
-    Object result = expression.getValue(context);
-
-    if (result == null) {
-      throw new IllegalArgumentException(
-          "SpEL expression '"
-              + spELExpression
-              + "' evaluated to null for method: "
-              + formatMethodSignature(joinPoint));
-    }
-
-    String resolvedKey = result.toString();
-    if (resolvedKey.isBlank()) {
-      throw new IllegalArgumentException(
-          "SpEL expression '"
-              + spELExpression
-              + "' evaluated to blank for method: "
-              + formatMethodSignature(joinPoint));
-    }
-
-    return resolvedKey;
   }
 }
