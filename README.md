@@ -112,14 +112,14 @@ public class MyService {
 
 ### Scheduled Tasks
 
-For scheduled tasks, use `ReturnDefaultHandler` to silently skip if lock is held:
+For scheduled tasks, use `LockReturnDefaultHandler` to silently skip if lock is held:
 
 ```java
 @Service
 public class SchedulerService {
 
     @Scheduled(cron = "0 0 3 * * ?")
-    @DistributedLock(key = "cleanup-job", skipHandler = ReturnDefaultHandler.class)
+    @DistributedLock(key = "cleanup-job", skipHandler = LockReturnDefaultHandler.class)
     public void dailyCleanup() {
         // Runs on only one instance
     }
@@ -336,8 +336,8 @@ The `LockContext` provides:
 - `returnType()` - The method's return type
 
 Built-in handlers:
-- `ThrowExceptionHandler` (default) - Throws `LockNotAcquiredException`
-- `ReturnDefaultHandler` - Returns null/default values
+- `LockThrowExceptionHandler` (default) - Throws `LockNotAcquiredException`
+- `LockReturnDefaultHandler` - Returns default values: `false` for boolean, `0` for numeric primitives, `Optional.empty()` for Optional, `null` for objects
 
 ### `@DistributedLock` Annotation Reference
 
@@ -349,7 +349,7 @@ Built-in handlers:
 | `leaseTime` | String | `""` (use config) | Lock auto-release time (e.g., "10m", "30s") |
 | `waitTime` | String | `""` (use config) | Wait time for WAIT_AND_SKIP (e.g., "30s", "1m") |
 | `autoRenew` | boolean | `false` | Enable automatic lease renewal via Redisson's watchdog |
-| `skipHandler` | Class | `ThrowExceptionHandler` | Handler for lock acquisition failures |
+| `skipHandler` | Class | `LockThrowExceptionHandler` | Handler for lock acquisition failures |
 | `onLeaseExpired` | LeaseExpirationBehavior | `LOG_WARNING` | Behavior when execution exceeds lease time |
 
 **`LockType`**
@@ -377,7 +377,7 @@ Built-in handlers:
 
 ### Lock Exception Handling
 
-When using `ThrowExceptionHandler` (default), catch `LockNotAcquiredException`:
+When using `LockThrowExceptionHandler` (default), catch `LockNotAcquiredException`:
 
 ```java
 try {
@@ -508,7 +508,7 @@ The `SemaphoreContext` provides:
 
 Built-in handlers:
 - `SemaphoreThrowExceptionHandler` (default) - Throws `SemaphoreNotAcquiredException`
-- `SemaphoreReturnDefaultHandler` - Returns null/default values
+- `SemaphoreReturnDefaultHandler` - Returns default values: `false` for boolean, `0` for numeric primitives, `Optional.empty()` for Optional, `null` for objects
 
 ### Semaphore Exception Handling
 

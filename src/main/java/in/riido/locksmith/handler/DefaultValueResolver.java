@@ -1,5 +1,6 @@
 package in.riido.locksmith.handler;
 
+import java.util.Optional;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -17,6 +18,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code 0} for numeric primitives and their wrapper types ({@code int}/{@code Integer},
  *       {@code long}/{@code Long}, {@code double}/{@code Double}, etc.)
  *   <li>{@code '\u0000'} for {@code char}/{@code Character}
+ *   <li>{@code Optional.empty()} for {@code Optional}
  * </ul>
  *
  * @author Garvit Joshi
@@ -62,6 +64,9 @@ public final class DefaultValueResolver {
     }
     if (returnType == char.class || returnType == Character.class) {
       return '\u0000';
+    }
+    if (returnType == Optional.class) {
+      return Optional.empty();
     }
     return null;
   }
