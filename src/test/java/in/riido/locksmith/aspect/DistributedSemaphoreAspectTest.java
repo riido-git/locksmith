@@ -72,6 +72,10 @@ class DistributedSemaphoreAspectTest {
     doReturn(metaBucket).when(redissonClient).getBucket(anyString());
     when(metaBucket.get()).thenReturn(null);
     when(semaphore.trySetPermits(anyInt())).thenReturn(true);
+    final var keys = redissonClient.getKeys();
+    if (keys != null && keys.count() > 0) {
+      keys.flushall();
+    }
   }
 
   public static class TestService {

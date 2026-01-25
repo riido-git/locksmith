@@ -2,7 +2,6 @@ package in.riido.locksmith.autoconfigure;
 
 import java.time.Duration;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
@@ -32,8 +31,8 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  */
 @ConfigurationProperties(prefix = "locksmith")
 public record LocksmithProperties(
-    @NestedConfigurationProperty @Nullable LockProperties lock,
-    @NestedConfigurationProperty @Nullable SemaphoreProperties semaphore) {
+    @NestedConfigurationProperty @NonNull LockProperties lock,
+    @NestedConfigurationProperty @NonNull SemaphoreProperties semaphore) {
 
   /**
    * Compact constructor that applies default values for null inputs.
@@ -57,7 +56,7 @@ public record LocksmithProperties(
    */
   @NonNull
   public static LocksmithProperties defaults() {
-    return new LocksmithProperties(null, null);
+    return new LocksmithProperties(LockProperties.defaults(), SemaphoreProperties.defaults());
   }
 
   @Override
@@ -78,10 +77,10 @@ public record LocksmithProperties(
    *     resolution, lock type, timing, and acquisition status. Default: false.
    */
   public record LockProperties(
-      @Nullable Duration leaseTime,
-      @Nullable Duration waitTime,
-      @Nullable String keyPrefix,
-      @Nullable Boolean debug) {
+      @NonNull Duration leaseTime,
+      @NonNull Duration waitTime,
+      @NonNull String keyPrefix,
+      @NonNull Boolean debug) {
 
     /** Default lease time for locks. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(10);
@@ -125,7 +124,8 @@ public record LocksmithProperties(
      */
     @NonNull
     public static LockProperties defaults() {
-      return new LockProperties(null, null, null, null);
+      return new LockProperties(
+          DEFAULT_LEASE_TIME, DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG);
     }
 
     @Override
@@ -155,10 +155,10 @@ public record LocksmithProperties(
    *     resolution, permit acquisition, timing, and status. Default: false.
    */
   public record SemaphoreProperties(
-      @Nullable Duration leaseTime,
-      @Nullable Duration waitTime,
-      @Nullable String keyPrefix,
-      @Nullable Boolean debug) {
+      @NonNull Duration leaseTime,
+      @NonNull Duration waitTime,
+      @NonNull String keyPrefix,
+      @NonNull Boolean debug) {
 
     /** Default lease time for semaphores. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(5);
@@ -202,7 +202,8 @@ public record LocksmithProperties(
      */
     @NonNull
     public static SemaphoreProperties defaults() {
-      return new SemaphoreProperties(null, null, null, null);
+      return new SemaphoreProperties(
+          DEFAULT_LEASE_TIME, DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG);
     }
 
     @Override

@@ -60,6 +60,10 @@ class DistributedLockAspectTest {
     when(methodSignature.getName()).thenReturn("testMethod");
     when(joinPoint.getArgs()).thenReturn(new Object[] {});
     when(methodSignature.getReturnType()).thenReturn(void.class);
+    final var keys = redissonClient.getKeys();
+    if (keys != null && keys.count() > 0) {
+      keys.flushall();
+    }
   }
 
   private void setupAnnotation(

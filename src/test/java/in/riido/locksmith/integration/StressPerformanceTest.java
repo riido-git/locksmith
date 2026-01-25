@@ -71,6 +71,10 @@ class StressPerformanceTest {
     factory.setProxyTargetClass(true);
     factory.addAspect(aspect);
     testService = factory.getProxy();
+    final var keys = redissonClient.getKeys();
+    if (keys != null && keys.count() > 0) {
+      keys.flushall();
+    }
   }
 
   @AfterEach
