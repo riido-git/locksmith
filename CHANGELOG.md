@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-01-26
+
+### Added
+- **Micrometer Metrics Integration** - Optional observability for lock and semaphore operations (#30)
+  - `LockMetrics` with counters, timers, and gauges for lock operations
+  - `SemaphoreMetrics` with parallel metrics for semaphore operations
+  - `LocksmithMetricsAutoConfiguration` for conditional bean creation
+  - Metrics are opt-in via `locksmith.lock.metrics-enabled` and `locksmith.semaphore.metrics-enabled` properties
+  - Graceful degradation when Micrometer is not on classpath
+- **Programmatic Templates** - Alternative to annotations for lock and semaphore operations (#42)
+  - `LocksmithLockTemplate` for programmatic lock operations with builder pattern
+  - `LocksmithSemaphoreTemplate` for programmatic semaphore operations with builder pattern
+  - `LockCallback` and `SemaphoreCallback` functional interfaces
+  - Support for auto-renew, custom timing, and all lock types
+
+### Lock Metrics
+- `locksmith.lock.acquired` - successful acquisitions
+- `locksmith.lock.skipped` (tagged by reason) - skipped acquisitions
+- `locksmith.lock.lease.expired` - lease expiration events
+- `locksmith.lock.acquisition.time` - acquisition duration
+- `locksmith.lock.held.time` - time lock was held
+- `locksmith.lock.autorenew.active` - gauge of active auto-renewed locks
+
+### Semaphore Metrics
+- `locksmith.semaphore.acquired` - successful permit acquisitions
+- `locksmith.semaphore.skipped` (tagged by reason) - skipped acquisitions
+- `locksmith.semaphore.lease.expired` - lease expiration events
+- `locksmith.semaphore.acquisition.time` - acquisition duration
+- `locksmith.semaphore.held.time` - time permit was held
+
+### Fixed
+- Semaphore permit consistency validation in `LocksmithSemaphoreTemplate`
+- Metrics skip reason logic using explicit mode instead of waitTime proxy
+- `LockOperationBuilder` now warns when `leaseTime()` overrides `autoRenew()`
+
 ## [2.0.0] - 2026-01-16
 
 ### Added

@@ -8,6 +8,8 @@ A Spring Boot starter for Redis-based distributed locking and semaphores using a
 
 - **`@DistributedLock`** - Exclusive/read-write locking for critical sections
 - **`@DistributedSemaphore`** - Permit-based concurrency control (limit N concurrent executions)
+- **Programmatic Templates** - `LocksmithLockTemplate` and `LocksmithSemaphoreTemplate` for programmatic access
+- **Micrometer Metrics** - Optional observability for lock and semaphore operations
 - Spring Expression Language (SpEL) support for dynamic keys
 - Read/Write lock support for concurrent reads with exclusive writes
 - Auto-renew lease time for long-running tasks using Redisson's watchdog
@@ -32,7 +34,7 @@ Add the dependency to your `pom.xml` (available on [Maven Central](https://centr
 <dependency>
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
