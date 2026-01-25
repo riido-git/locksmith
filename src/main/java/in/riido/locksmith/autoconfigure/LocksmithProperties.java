@@ -75,12 +75,15 @@ public record LocksmithProperties(
    * @param keyPrefix The prefix to use for all lock keys in Redis. Default: "lock:".
    * @param debug When enabled, logs detailed information about lock operations including key
    *     resolution, lock type, timing, and acquisition status. Default: false.
+   * @param metricsEnabled When enabled, records Micrometer metrics for lock operations. Requires
+   *     micrometer-core on classpath and a MeterRegistry bean. Default: false.
    */
   public record LockProperties(
       @NonNull Duration leaseTime,
       @NonNull Duration waitTime,
       @NonNull String keyPrefix,
-      @NonNull Boolean debug) {
+      @NonNull Boolean debug,
+      @NonNull Boolean metricsEnabled) {
 
     /** Default lease time for locks. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(10);
@@ -94,6 +97,9 @@ public record LocksmithProperties(
     /** Default debug mode. */
     public static final Boolean DEFAULT_DEBUG = Boolean.FALSE;
 
+    /** Default metrics enabled. */
+    public static final Boolean DEFAULT_METRICS_ENABLED = Boolean.FALSE;
+
     /**
      * Compact constructor that applies default values for null or invalid inputs.
      *
@@ -101,6 +107,7 @@ public record LocksmithProperties(
      * @param waitTime the wait time, or null to use default
      * @param keyPrefix the key prefix, or null to use default
      * @param debug the debug mode, or null to use default
+     * @param metricsEnabled the metrics enabled flag, or null to use default
      */
     public LockProperties {
       if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
@@ -115,6 +122,9 @@ public record LocksmithProperties(
       if (debug == null) {
         debug = DEFAULT_DEBUG;
       }
+      if (metricsEnabled == null) {
+        metricsEnabled = DEFAULT_METRICS_ENABLED;
+      }
     }
 
     /**
@@ -125,7 +135,11 @@ public record LocksmithProperties(
     @NonNull
     public static LockProperties defaults() {
       return new LockProperties(
-          DEFAULT_LEASE_TIME, DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG);
+          DEFAULT_LEASE_TIME,
+          DEFAULT_WAIT_TIME,
+          DEFAULT_KEY_PREFIX,
+          DEFAULT_DEBUG,
+          DEFAULT_METRICS_ENABLED);
     }
 
     @Override
@@ -139,6 +153,8 @@ public record LocksmithProperties(
           + keyPrefix
           + "', debug="
           + debug
+          + ", metricsEnabled="
+          + metricsEnabled
           + "]";
     }
   }
@@ -153,12 +169,15 @@ public record LocksmithProperties(
    * @param keyPrefix The prefix to use for all semaphore keys in Redis. Default: "semaphore:".
    * @param debug When enabled, logs detailed information about semaphore operations including key
    *     resolution, permit acquisition, timing, and status. Default: false.
+   * @param metricsEnabled When enabled, records Micrometer metrics for semaphore operations.
+   *     Requires micrometer-core on classpath and a MeterRegistry bean. Default: false.
    */
   public record SemaphoreProperties(
       @NonNull Duration leaseTime,
       @NonNull Duration waitTime,
       @NonNull String keyPrefix,
-      @NonNull Boolean debug) {
+      @NonNull Boolean debug,
+      @NonNull Boolean metricsEnabled) {
 
     /** Default lease time for semaphores. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(5);
@@ -172,6 +191,9 @@ public record LocksmithProperties(
     /** Default debug mode. */
     public static final Boolean DEFAULT_DEBUG = Boolean.FALSE;
 
+    /** Default metrics enabled. */
+    public static final Boolean DEFAULT_METRICS_ENABLED = Boolean.FALSE;
+
     /**
      * Compact constructor that applies default values for null or invalid inputs.
      *
@@ -179,6 +201,7 @@ public record LocksmithProperties(
      * @param waitTime the wait time, or null to use default
      * @param keyPrefix the key prefix, or null to use default
      * @param debug the debug mode, or null to use default
+     * @param metricsEnabled the metrics enabled flag, or null to use default
      */
     public SemaphoreProperties {
       if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
@@ -193,6 +216,9 @@ public record LocksmithProperties(
       if (debug == null) {
         debug = DEFAULT_DEBUG;
       }
+      if (metricsEnabled == null) {
+        metricsEnabled = DEFAULT_METRICS_ENABLED;
+      }
     }
 
     /**
@@ -203,7 +229,11 @@ public record LocksmithProperties(
     @NonNull
     public static SemaphoreProperties defaults() {
       return new SemaphoreProperties(
-          DEFAULT_LEASE_TIME, DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG);
+          DEFAULT_LEASE_TIME,
+          DEFAULT_WAIT_TIME,
+          DEFAULT_KEY_PREFIX,
+          DEFAULT_DEBUG,
+          DEFAULT_METRICS_ENABLED);
     }
 
     @Override
@@ -217,6 +247,8 @@ public record LocksmithProperties(
           + keyPrefix
           + "', debug="
           + debug
+          + ", metricsEnabled="
+          + metricsEnabled
           + "]";
     }
   }

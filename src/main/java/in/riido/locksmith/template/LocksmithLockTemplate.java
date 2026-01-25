@@ -3,6 +3,7 @@ package in.riido.locksmith.template;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
+import in.riido.locksmith.metrics.LockMetrics;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
@@ -71,6 +72,7 @@ public class LocksmithLockTemplate {
 
   private final RedissonClient redissonClient;
   private final LockProperties lockProperties;
+  @Nullable private final LockMetrics lockMetrics;
 
   /**
    * Constructs a new LocksmithLockTemplate.
@@ -80,8 +82,23 @@ public class LocksmithLockTemplate {
    */
   public LocksmithLockTemplate(
       @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+    this(redissonClient, properties, null);
+  }
+
+  /**
+   * Constructs a new LocksmithLockTemplate with optional metrics support.
+   *
+   * @param redissonClient the Redisson client for Redis operations
+   * @param properties the configuration properties
+   * @param lockMetrics the optional lock metrics for observability
+   */
+  public LocksmithLockTemplate(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @Nullable LockMetrics lockMetrics) {
     this.redissonClient = redissonClient;
     this.lockProperties = properties.lock();
+    this.lockMetrics = lockMetrics;
   }
 
   // ========== Simple Methods ==========
@@ -96,7 +113,7 @@ public class LocksmithLockTemplate {
    * @return true if the lock was acquired, false otherwise
    */
   public boolean tryLock(@NonNull String key) {
-    return doTryLock(key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT);
+    return doTryLock(key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT, true);
   }
 
   /**
@@ -138,7 +155,7 @@ public class LocksmithLockTemplate {
   public <T> T executeWithLock(@NonNull String key, @NonNull LockCallback<T> callback)
       throws Exception {
     return doExecuteWithLock(
-        key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT, callback);
+        key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT, true, callback);
   }
 
   // ========== Builder Entry Point ==========
@@ -177,21 +194,35 @@ public class LocksmithLockTemplate {
       @NonNull String key,
       @NonNull Duration waitTime,
       @NonNull Duration leaseTime,
-      @NonNull LockType lockType) {
+      @NonNull LockType lockType,
+      boolean immediateMode) {
     String fullKey = lockProperties.keyPrefix() + key;
     RLock lock = getLock(fullKey, lockType);
+    long startTime = System.currentTimeMillis();
 
     try {
       boolean acquired =
           lock.tryLock(waitTime.toMillis(), leaseTime.toMillis(), TimeUnit.MILLISECONDS);
       if (acquired) {
+        if (lockMetrics != null) {
+          lockMetrics.recordAcquisitionTime(System.currentTimeMillis() - startTime);
+          lockMetrics.recordAcquired();
+        }
         LOG.debug("Lock [{}] acquired with type={}", fullKey, lockType);
       } else {
+        if (lockMetrics != null) {
+          String reason = immediateMode ? "immediate" : "timeout";
+          lockMetrics.recordSkipped(reason);
+        }
         LOG.debug("Failed to acquire lock [{}] with type={}", fullKey, lockType);
       }
       return acquired;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (lockMetrics != null) {
+        String reason = immediateMode ? "immediate" : "timeout";
+        lockMetrics.recordSkipped(reason);
+      }
       LOG.warn("Thread interrupted while waiting for lock [{}]", fullKey);
       return false;
     }
@@ -224,24 +255,44 @@ public class LocksmithLockTemplate {
       @NonNull Duration waitTime,
       @NonNull Duration leaseTime,
       @NonNull LockType lockType,
+      boolean immediateMode,
       @NonNull LockCallback<T> callback)
       throws Exception {
     String fullKey = lockProperties.keyPrefix() + key;
     RLock lock = getLock(fullKey, lockType);
+    long acquisitionStartTime = System.currentTimeMillis();
 
     boolean acquired = false;
     try {
       acquired = lock.tryLock(waitTime.toMillis(), leaseTime.toMillis(), TimeUnit.MILLISECONDS);
 
       if (!acquired) {
+        if (lockMetrics != null) {
+          String reason = immediateMode ? "immediate" : "timeout";
+          lockMetrics.recordSkipped(reason);
+        }
         LOG.debug("Failed to acquire lock [{}] for callback execution", fullKey);
         return null;
       }
 
+      if (lockMetrics != null) {
+        lockMetrics.recordAcquisitionTime(System.currentTimeMillis() - acquisitionStartTime);
+        lockMetrics.recordAcquired();
+      }
+
       LOG.debug("Lock [{}] acquired for callback execution", fullKey);
-      return callback.execute();
+      long heldStartTime = System.currentTimeMillis();
+      T result = callback.execute();
+      if (lockMetrics != null) {
+        lockMetrics.recordHeldTime(System.currentTimeMillis() - heldStartTime);
+      }
+      return result;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (lockMetrics != null) {
+        String reason = immediateMode ? "immediate" : "timeout";
+        lockMetrics.recordSkipped(reason);
+      }
       LOG.warn("Thread interrupted while waiting for lock [{}]", fullKey);
       return null;
     } finally {
@@ -301,6 +352,7 @@ public class LocksmithLockTemplate {
     private Duration waitTime = Duration.ZERO;
     private Duration leaseTime = lockProperties.leaseTime();
     private LockType lockType = LockType.REENTRANT;
+    private boolean autoRenewEnabled = false;
 
     private LockOperationBuilder(@NonNull String key) {
       this.key = key;
@@ -326,11 +378,21 @@ public class LocksmithLockTemplate {
      * <p>Default is the configured lease time from properties. Use {@link #autoRenew()} instead of
      * setting a negative value.
      *
+     * <p><b>Note:</b> Calling this method after {@link #autoRenew()} will disable auto-renew and a
+     * warning will be logged.
+     *
      * @param leaseTime the lease time
      * @return this builder for chaining
      */
     @NonNull
     public LockOperationBuilder leaseTime(@NonNull Duration leaseTime) {
+      if (autoRenewEnabled) {
+        LOG.warn(
+            "leaseTime() called after autoRenew() for key [{}] - auto-renew will be disabled. "
+                + "Remove leaseTime() call to use auto-renew, or remove autoRenew() to use fixed lease time.",
+            key);
+        autoRenewEnabled = false;
+      }
       this.leaseTime = leaseTime;
       return this;
     }
@@ -355,10 +417,14 @@ public class LocksmithLockTemplate {
      * <p>When enabled, the lock will be automatically renewed while held, preventing expiration
      * during long-running operations. This is equivalent to setting lease time to -1ms.
      *
+     * <p><b>Note:</b> Calling {@link #leaseTime(Duration)} after this method will disable
+     * auto-renew.
+     *
      * @return this builder for chaining
      */
     @NonNull
     public LockOperationBuilder autoRenew() {
+      this.autoRenewEnabled = true;
       this.leaseTime = Duration.ofMillis(-1);
       return this;
     }
@@ -369,7 +435,8 @@ public class LocksmithLockTemplate {
      * @return true if the lock was acquired, false otherwise
      */
     public boolean tryLock() {
-      return doTryLock(key, waitTime, leaseTime, lockType);
+      boolean immediateMode = waitTime.isZero();
+      return doTryLock(key, waitTime, leaseTime, lockType, immediateMode);
     }
 
     /**
@@ -405,7 +472,8 @@ public class LocksmithLockTemplate {
      */
     @Nullable
     public <T> T execute(@NonNull LockCallback<T> callback) throws Exception {
-      return doExecuteWithLock(key, waitTime, leaseTime, lockType, callback);
+      boolean immediateMode = waitTime.isZero();
+      return doExecuteWithLock(key, waitTime, leaseTime, lockType, immediateMode, callback);
     }
   }
 }

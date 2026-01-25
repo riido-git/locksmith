@@ -2,12 +2,16 @@ package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
+import in.riido.locksmith.metrics.LockMetrics;
+import in.riido.locksmith.metrics.SemaphoreMetrics;
 import in.riido.locksmith.template.LocksmithLockTemplate;
 import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -64,6 +68,7 @@ public class LocksmithAutoConfiguration {
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param applicationContext the Spring application context for handler bean lookup
+   * @param lockMetricsProvider optional lock metrics provider for observability
    * @return the configured DistributedLockAspect
    */
   @Bean
@@ -72,15 +77,18 @@ public class LocksmithAutoConfiguration {
   public DistributedLockAspect distributedLockAspect(
       @NonNull RedissonClient redissonClient,
       @NonNull LocksmithProperties properties,
-      @NonNull ApplicationContext applicationContext) {
+      @NonNull ApplicationContext applicationContext,
+      @NonNull ObjectProvider<LockMetrics> lockMetricsProvider) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
+    @Nullable LockMetrics lockMetrics = lockMetricsProvider.getIfAvailable();
     LOG.info(
-        "Initializing locksmith lock aspect with Spring Boot {} and Redisson {} - Lock Properties: {}",
+        "Initializing locksmith lock aspect with Spring Boot {} and Redisson {} - Lock Properties: {}, Metrics: {}",
         springBootVersion,
         redissonVersion,
-        properties.lock());
-    return new DistributedLockAspect(redissonClient, properties, applicationContext);
+        properties.lock(),
+        lockMetrics != null ? "enabled" : "disabled");
+    return new DistributedLockAspect(redissonClient, properties, applicationContext, lockMetrics);
   }
 
   /**
@@ -89,6 +97,7 @@ public class LocksmithAutoConfiguration {
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param applicationContext the Spring application context for handler bean lookup
+   * @param semaphoreMetricsProvider optional semaphore metrics provider for observability
    * @return the configured DistributedSemaphoreAspect
    * @since 2.0.0
    */
@@ -98,15 +107,19 @@ public class LocksmithAutoConfiguration {
   public DistributedSemaphoreAspect distributedSemaphoreAspect(
       @NonNull RedissonClient redissonClient,
       @NonNull LocksmithProperties properties,
-      @NonNull ApplicationContext applicationContext) {
+      @NonNull ApplicationContext applicationContext,
+      @NonNull ObjectProvider<SemaphoreMetrics> semaphoreMetricsProvider) {
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
     String springBootVersion = SpringBootVersion.getVersion();
+    @Nullable SemaphoreMetrics semaphoreMetrics = semaphoreMetricsProvider.getIfAvailable();
     LOG.info(
-        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Semaphore Properties: {}",
+        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Semaphore Properties: {}, Metrics: {}",
         springBootVersion,
         redissonVersion,
-        properties.semaphore());
-    return new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
+        properties.semaphore(),
+        semaphoreMetrics != null ? "enabled" : "disabled");
+    return new DistributedSemaphoreAspect(
+        redissonClient, properties, applicationContext, semaphoreMetrics);
   }
 
   /**
@@ -114,6 +127,7 @@ public class LocksmithAutoConfiguration {
    *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
+   * @param lockMetricsProvider optional lock metrics provider for observability
    * @return the configured LocksmithLockTemplate
    * @since 2.1.0
    */
@@ -121,9 +135,14 @@ public class LocksmithAutoConfiguration {
   @ConditionalOnMissingBean
   @NonNull
   public LocksmithLockTemplate locksmithLockTemplate(
-      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
-    LOG.info("Initializing locksmith lock template");
-    return new LocksmithLockTemplate(redissonClient, properties);
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ObjectProvider<LockMetrics> lockMetricsProvider) {
+    @Nullable LockMetrics lockMetrics = lockMetricsProvider.getIfAvailable();
+    LOG.info(
+        "Initializing locksmith lock template, Metrics: {}",
+        lockMetrics != null ? "enabled" : "disabled");
+    return new LocksmithLockTemplate(redissonClient, properties, lockMetrics);
   }
 
   /**
@@ -131,6 +150,7 @@ public class LocksmithAutoConfiguration {
    *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
+   * @param semaphoreMetricsProvider optional semaphore metrics provider for observability
    * @return the configured LocksmithSemaphoreTemplate
    * @since 2.1.0
    */
@@ -138,8 +158,13 @@ public class LocksmithAutoConfiguration {
   @ConditionalOnMissingBean
   @NonNull
   public LocksmithSemaphoreTemplate locksmithSemaphoreTemplate(
-      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
-    LOG.info("Initializing locksmith semaphore template");
-    return new LocksmithSemaphoreTemplate(redissonClient, properties);
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ObjectProvider<SemaphoreMetrics> semaphoreMetricsProvider) {
+    @Nullable SemaphoreMetrics semaphoreMetrics = semaphoreMetricsProvider.getIfAvailable();
+    LOG.info(
+        "Initializing locksmith semaphore template, Metrics: {}",
+        semaphoreMetrics != null ? "enabled" : "disabled");
+    return new LocksmithSemaphoreTemplate(redissonClient, properties, semaphoreMetrics);
   }
 }

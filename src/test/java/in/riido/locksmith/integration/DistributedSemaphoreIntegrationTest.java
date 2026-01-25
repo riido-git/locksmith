@@ -70,7 +70,7 @@ class DistributedSemaphoreIntegrationTest {
         new LocksmithProperties(
             null,
             new SemaphoreProperties(
-                Duration.ofMinutes(5), Duration.ofSeconds(30), "semtest:", false));
+                Duration.ofMinutes(5), Duration.ofSeconds(30), "semtest:", false, false));
     DistributedSemaphoreAspect aspect =
         new DistributedSemaphoreAspect(redissonClient, properties, new GenericApplicationContext());
 

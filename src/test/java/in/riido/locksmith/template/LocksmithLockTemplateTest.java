@@ -31,7 +31,7 @@ class LocksmithLockTemplateTest {
     LocksmithProperties properties =
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false),
+                Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false, false),
             null);
     template = new LocksmithLockTemplate(redissonClient, properties);
     lock = mock(RLock.class);
@@ -419,7 +419,7 @@ class LocksmithLockTemplateTest {
       LocksmithProperties customProperties =
           new LocksmithProperties(
               new LocksmithProperties.LockProperties(
-                  Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false),
+                  Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false, false),
               null);
       LocksmithLockTemplate customTemplate =
           new LocksmithLockTemplate(redissonClient, customProperties);

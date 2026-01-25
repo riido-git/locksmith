@@ -79,13 +79,17 @@ class VirtualThreadTest {
     Config config = new Config();
     config
         .useSingleServer()
-        .setAddress("redis://" + redis.getHost() + ":" + redis.getMappedPort(REDIS_PORT));
+        .setAddress("redis://" + redis.getHost() + ":" + redis.getMappedPort(REDIS_PORT))
+        .setConnectionPoolSize(1000)
+        .setConnectionMinimumIdleSize(1000)
+        .setSubscriptionConnectionPoolSize(1000)
+        .setSubscriptionsPerConnection(1000);
     redissonClient = Redisson.create(config);
 
     LocksmithProperties properties =
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false),
+                Duration.ofMinutes(1), Duration.ofSeconds(30), "vthread:", false, false),
             null);
     DistributedLockAspect aspect =
         new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());
@@ -442,6 +446,12 @@ class VirtualThreadTest {
     @DisplayName("Should demonstrate virtual thread efficiency with many waiting tasks")
     void shouldDemonstrateVirtualThreadEfficiencyWithManyWaitingTasks()
         throws InterruptedException {
+      var keys = redissonClient.getKeys();
+      if (keys != null && keys.count() > 0) {
+        keys.flushall();
+        LOG.info("Cleared existing keys in Redis before performance test");
+        Thread.sleep(100);
+      }
       int taskCount = 500;
       AtomicInteger completedCount = new AtomicInteger(0);
       CountDownLatch allComplete = new CountDownLatch(taskCount);
@@ -451,7 +461,7 @@ class VirtualThreadTest {
       ExecutorService executor = newVirtualThreadExecutor();
       try {
         for (int i = 0; i < taskCount; i++) {
-          final String key = "perf-key-" + (i % 10);
+          final String key = "perf-key-" + (i % 100);
           executor.submit(
               () -> {
                 try {
