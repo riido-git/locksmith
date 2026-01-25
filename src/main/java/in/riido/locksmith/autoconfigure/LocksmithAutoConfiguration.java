@@ -2,6 +2,8 @@ package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
+import in.riido.locksmith.template.LocksmithLockTemplate;
+import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
 import org.jspecify.annotations.NonNull;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
@@ -105,5 +107,39 @@ public class LocksmithAutoConfiguration {
         redissonVersion,
         properties.semaphore());
     return new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
+  }
+
+  /**
+   * Creates the lock template bean for programmatic lock access.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @return the configured LocksmithLockTemplate
+   * @since 2.1.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @NonNull
+  public LocksmithLockTemplate locksmithLockTemplate(
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+    LOG.info("Initializing locksmith lock template");
+    return new LocksmithLockTemplate(redissonClient, properties);
+  }
+
+  /**
+   * Creates the semaphore template bean for programmatic semaphore access.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @return the configured LocksmithSemaphoreTemplate
+   * @since 2.1.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @NonNull
+  public LocksmithSemaphoreTemplate locksmithSemaphoreTemplate(
+      @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+    LOG.info("Initializing locksmith semaphore template");
+    return new LocksmithSemaphoreTemplate(redissonClient, properties);
   }
 }
