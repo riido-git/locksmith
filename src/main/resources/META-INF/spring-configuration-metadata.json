@@ -77,6 +77,20 @@
       "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
       "description": "When enabled, logs detailed information about semaphore operations including key resolution, permit count, timing, and acquisition status.",
       "defaultValue": false
+    },
+    {
+      "name": "locksmith.lock.metrics-enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$LockProperties",
+      "description": "When enabled, records Micrometer metrics for lock operations including acquisition time, held time, and skip counts. Requires micrometer-core on classpath and a MeterRegistry bean.",
+      "defaultValue": false
+    },
+    {
+      "name": "locksmith.semaphore.metrics-enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "in.riido.locksmith.autoconfigure.LocksmithProperties$SemaphoreProperties",
+      "description": "When enabled, records Micrometer metrics for semaphore operations including acquisition time, held time, and skip counts. Requires micrometer-core on classpath and a MeterRegistry bean.",
+      "defaultValue": false
     }
   ]
 }

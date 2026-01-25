@@ -8,6 +8,7 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.exception.SemaphoreLeaseExpiredException;
 import in.riido.locksmith.handler.SemaphoreSkipHandler;
+import in.riido.locksmith.metrics.SemaphoreMetrics;
 import in.riido.locksmith.models.SemaphoreContext;
 import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.SpELKeyResolver;
@@ -63,6 +64,7 @@ public class DistributedSemaphoreAspect {
   private final RedissonClient redissonClient;
   private final SemaphoreProperties semaphoreProperties;
   private final ApplicationContext applicationContext;
+  @Nullable private final SemaphoreMetrics semaphoreMetrics;
 
   /**
    * Constructs a new DistributedSemaphoreAspect.
@@ -75,9 +77,26 @@ public class DistributedSemaphoreAspect {
       @NonNull RedissonClient redissonClient,
       @NonNull LocksmithProperties properties,
       @NonNull ApplicationContext applicationContext) {
+    this(redissonClient, properties, applicationContext, null);
+  }
+
+  /**
+   * Constructs a new DistributedSemaphoreAspect with optional metrics support.
+   *
+   * @param redissonClient the Redisson client for Redis operations
+   * @param properties the configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
+   * @param semaphoreMetrics the optional semaphore metrics for observability
+   */
+  public DistributedSemaphoreAspect(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext,
+      @Nullable SemaphoreMetrics semaphoreMetrics) {
     this.redissonClient = redissonClient;
     this.semaphoreProperties = properties.semaphore();
     this.applicationContext = applicationContext;
+    this.semaphoreMetrics = semaphoreMetrics;
   }
 
   /**
@@ -145,11 +164,17 @@ public class DistributedSemaphoreAspect {
     }
 
     String permitId = null;
+    final long acquisitionStartTime = System.currentTimeMillis();
 
     try {
       permitId = tryAcquirePermit(semaphore, annotation.mode(), waitTime, leaseTime);
 
       if (permitId == null) {
+        if (semaphoreMetrics != null) {
+          String reason =
+              annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+          semaphoreMetrics.recordSkipped(reason);
+        }
         if (debugMode) {
           LOG.info(
               "Permit acquisition failed for [{}] in [{}], invoking skip handler: {}",
@@ -165,11 +190,20 @@ public class DistributedSemaphoreAspect {
         return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
       }
 
+      if (semaphoreMetrics != null) {
+        semaphoreMetrics.recordAcquisitionTime(System.currentTimeMillis() - acquisitionStartTime);
+        semaphoreMetrics.recordAcquired();
+      }
+
       LOG.info("Permit [{}] acquired from [{}] for [{}]", permitId, semaphoreKey, methodName);
 
       final long startTime = System.currentTimeMillis();
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
+
+      if (semaphoreMetrics != null) {
+        semaphoreMetrics.recordHeldTime(executionTime);
+      }
 
       if (debugMode) {
         LOG.info(
@@ -191,6 +225,11 @@ public class DistributedSemaphoreAspect {
           "Thread interrupted while waiting for permit from [{}] in [{}]",
           semaphoreKey,
           methodName);
+      if (semaphoreMetrics != null) {
+        String reason =
+            annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+        semaphoreMetrics.recordSkipped(reason);
+      }
       return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
     } finally {
       if (permitId != null) {
@@ -343,6 +382,10 @@ public class DistributedSemaphoreAspect {
 
     if (executionTimeMs <= leaseTimeMs) {
       return;
+    }
+
+    if (semaphoreMetrics != null) {
+      semaphoreMetrics.recordLeaseExpired();
     }
 
     switch (behavior) {

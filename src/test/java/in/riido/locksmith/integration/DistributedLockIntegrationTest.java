@@ -54,7 +54,7 @@ class DistributedLockIntegrationTest {
     LocksmithProperties properties =
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false),
+                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false, false),
             null);
     DistributedLockAspect aspect =
         new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());

@@ -8,6 +8,7 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
 import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.handler.LockSkipHandler;
+import in.riido.locksmith.metrics.LockMetrics;
 import in.riido.locksmith.models.LockContext;
 import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.SpELKeyResolver;
@@ -50,6 +51,7 @@ public class DistributedLockAspect {
   private final RedissonClient redissonClient;
   private final LockProperties lockProperties;
   private final ApplicationContext applicationContext;
+  @Nullable private final LockMetrics lockMetrics;
 
   private final Map<Class<? extends LockSkipHandler>, LockSkipHandler> handlerCache =
       new ConcurrentHashMap<>(5);
@@ -65,9 +67,26 @@ public class DistributedLockAspect {
       @NonNull RedissonClient redissonClient,
       @NonNull LocksmithProperties properties,
       @NonNull ApplicationContext applicationContext) {
+    this(redissonClient, properties, applicationContext, null);
+  }
+
+  /**
+   * Constructs a new DistributedLockAspect with optional metrics support.
+   *
+   * @param redissonClient the Redisson client for Redis operations
+   * @param properties the configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
+   * @param lockMetrics the optional lock metrics for observability
+   */
+  public DistributedLockAspect(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext,
+      @Nullable LockMetrics lockMetrics) {
     this.redissonClient = redissonClient;
     this.lockProperties = properties.lock();
     this.applicationContext = applicationContext;
+    this.lockMetrics = lockMetrics;
   }
 
   /**
@@ -136,11 +155,17 @@ public class DistributedLockAspect {
     }
 
     boolean lockAcquired = false;
+    final long acquisitionStartTime = System.currentTimeMillis();
 
     try {
       lockAcquired = tryAcquireLock(lock, distributedLock.mode(), waitTime, leaseTime);
 
       if (!lockAcquired) {
+        if (lockMetrics != null) {
+          String reason =
+              distributedLock.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+          lockMetrics.recordSkipped(reason);
+        }
         if (debugMode) {
           LOG.info(
               "Lock acquisition failed for [{}] in [{}], invoking skip handler: {}",
@@ -156,11 +181,23 @@ public class DistributedLockAspect {
         return handleSkip(distributedLock, joinPoint, lockKey, methodName);
       }
 
+      if (lockMetrics != null) {
+        lockMetrics.recordAcquisitionTime(System.currentTimeMillis() - acquisitionStartTime);
+        lockMetrics.recordAcquired();
+        if (autoRenew) {
+          lockMetrics.incrementAutoRenewActive();
+        }
+      }
+
       LOG.info("Lock [{}] acquired for [{}]", lockKey, methodName);
 
       final long startTime = System.currentTimeMillis();
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
+
+      if (lockMetrics != null) {
+        lockMetrics.recordHeldTime(executionTime);
+      }
 
       if (debugMode) {
         LOG.info(
@@ -182,8 +219,16 @@ public class DistributedLockAspect {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
+      if (lockMetrics != null) {
+        String reason =
+            distributedLock.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+        lockMetrics.recordSkipped(reason);
+      }
       return handleSkip(distributedLock, joinPoint, lockKey, methodName);
     } finally {
+      if (autoRenew && lockMetrics != null && lockAcquired) {
+        lockMetrics.decrementAutoRenewActive();
+      }
       if (lockAcquired && lock.isHeldByCurrentThread()) {
         releaseLock(lock, lockKey, methodName);
       } else if (lockAcquired) {
@@ -215,6 +260,10 @@ public class DistributedLockAspect {
 
     if (executionTimeMs <= leaseTimeMs) {
       return;
+    }
+
+    if (lockMetrics != null) {
+      lockMetrics.recordLeaseExpired();
     }
 
     switch (behavior) {

@@ -2,6 +2,7 @@ package in.riido.locksmith.template;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
+import in.riido.locksmith.metrics.SemaphoreMetrics;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -75,9 +76,13 @@ public class LocksmithSemaphoreTemplate {
 
   private final RedissonClient redissonClient;
   private final SemaphoreProperties semaphoreProperties;
+  @Nullable private final SemaphoreMetrics semaphoreMetrics;
 
   /** Cache to track which keys have been initialized in Redis by this JVM. */
   private final Map<String, Boolean> initializedKeys = new ConcurrentHashMap<>();
+
+  /** Cache to track permits per key within this JVM for consistency validation. */
+  private final Map<String, Integer> keyToPermits = new ConcurrentHashMap<>();
 
   /**
    * Constructs a new LocksmithSemaphoreTemplate.
@@ -87,8 +92,23 @@ public class LocksmithSemaphoreTemplate {
    */
   public LocksmithSemaphoreTemplate(
       @NonNull RedissonClient redissonClient, @NonNull LocksmithProperties properties) {
+    this(redissonClient, properties, null);
+  }
+
+  /**
+   * Constructs a new LocksmithSemaphoreTemplate with optional metrics support.
+   *
+   * @param redissonClient the Redisson client for Redis operations
+   * @param properties the configuration properties
+   * @param semaphoreMetrics the optional semaphore metrics for observability
+   */
+  public LocksmithSemaphoreTemplate(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @Nullable SemaphoreMetrics semaphoreMetrics) {
     this.redissonClient = redissonClient;
     this.semaphoreProperties = properties.semaphore();
+    this.semaphoreMetrics = semaphoreMetrics;
   }
 
   // ========== Simple Methods ==========
@@ -106,7 +126,7 @@ public class LocksmithSemaphoreTemplate {
    */
   @Nullable
   public String tryAcquirePermit(@NonNull String key, int permits) {
-    return doTryAcquirePermit(key, permits, Duration.ZERO, semaphoreProperties.leaseTime());
+    return doTryAcquirePermit(key, permits, Duration.ZERO, semaphoreProperties.leaseTime(), true);
   }
 
   /**
@@ -150,7 +170,7 @@ public class LocksmithSemaphoreTemplate {
   public <T> T executeWithPermit(
       @NonNull String key, int permits, @NonNull SemaphoreCallback<T> callback) throws Exception {
     return doExecuteWithPermit(
-        key, permits, Duration.ZERO, semaphoreProperties.leaseTime(), callback);
+        key, permits, Duration.ZERO, semaphoreProperties.leaseTime(), true, callback);
   }
 
   // ========== Builder Entry Point ==========
@@ -186,27 +206,45 @@ public class LocksmithSemaphoreTemplate {
 
   @Nullable
   private String doTryAcquirePermit(
-      @NonNull String key, int permits, @NonNull Duration waitTime, @NonNull Duration leaseTime) {
+      @NonNull String key,
+      int permits,
+      @NonNull Duration waitTime,
+      @NonNull Duration leaseTime,
+      boolean immediateMode) {
     if (permits <= 0) {
       throw new IllegalArgumentException("Permits must be positive, got: " + permits);
     }
 
     String fullKey = semaphoreProperties.keyPrefix() + key;
+    validatePermitsConsistency(fullKey, permits);
     ensureSemaphoreInitialized(fullKey, permits);
 
     RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(fullKey);
+    long startTime = System.currentTimeMillis();
 
     try {
       String permitId =
           semaphore.tryAcquire(waitTime.toMillis(), leaseTime.toMillis(), TimeUnit.MILLISECONDS);
       if (permitId != null) {
+        if (semaphoreMetrics != null) {
+          semaphoreMetrics.recordAcquisitionTime(System.currentTimeMillis() - startTime);
+          semaphoreMetrics.recordAcquired();
+        }
         LOG.debug("Permit [{}] acquired from semaphore [{}]", permitId, fullKey);
       } else {
+        if (semaphoreMetrics != null) {
+          String reason = immediateMode ? "immediate" : "timeout";
+          semaphoreMetrics.recordSkipped(reason);
+        }
         LOG.debug("Failed to acquire permit from semaphore [{}]", fullKey);
       }
       return permitId;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (semaphoreMetrics != null) {
+        String reason = immediateMode ? "immediate" : "timeout";
+        semaphoreMetrics.recordSkipped(reason);
+      }
       LOG.warn("Thread interrupted while waiting for permit from [{}]", fullKey);
       return null;
     }
@@ -218,6 +256,7 @@ public class LocksmithSemaphoreTemplate {
       int permits,
       @NonNull Duration waitTime,
       @NonNull Duration leaseTime,
+      boolean immediateMode,
       @NonNull SemaphoreCallback<T> callback)
       throws Exception {
     if (permits <= 0) {
@@ -225,9 +264,11 @@ public class LocksmithSemaphoreTemplate {
     }
 
     String fullKey = semaphoreProperties.keyPrefix() + key;
+    validatePermitsConsistency(fullKey, permits);
     ensureSemaphoreInitialized(fullKey, permits);
 
     RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(fullKey);
+    long acquisitionStartTime = System.currentTimeMillis();
 
     String permitId = null;
     try {
@@ -235,14 +276,32 @@ public class LocksmithSemaphoreTemplate {
           semaphore.tryAcquire(waitTime.toMillis(), leaseTime.toMillis(), TimeUnit.MILLISECONDS);
 
       if (permitId == null) {
+        if (semaphoreMetrics != null) {
+          String reason = immediateMode ? "immediate" : "timeout";
+          semaphoreMetrics.recordSkipped(reason);
+        }
         LOG.debug("Failed to acquire permit from [{}] for callback execution", fullKey);
         return null;
       }
 
+      if (semaphoreMetrics != null) {
+        semaphoreMetrics.recordAcquisitionTime(System.currentTimeMillis() - acquisitionStartTime);
+        semaphoreMetrics.recordAcquired();
+      }
+
       LOG.debug("Permit [{}] acquired from [{}] for callback execution", permitId, fullKey);
-      return callback.execute();
+      long heldStartTime = System.currentTimeMillis();
+      T result = callback.execute();
+      if (semaphoreMetrics != null) {
+        semaphoreMetrics.recordHeldTime(System.currentTimeMillis() - heldStartTime);
+      }
+      return result;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (semaphoreMetrics != null) {
+        String reason = immediateMode ? "immediate" : "timeout";
+        semaphoreMetrics.recordSkipped(reason);
+      }
       LOG.warn("Thread interrupted while waiting for permit from [{}]", fullKey);
       return null;
     } finally {
@@ -315,6 +374,25 @@ public class LocksmithSemaphoreTemplate {
     }
 
     initializedKeys.put(fullKey, Boolean.TRUE);
+  }
+
+  /**
+   * Validates that the same semaphore key is not used with different permits values within this
+   * JVM.
+   *
+   * @param fullKey the full semaphore key including prefix
+   * @param permits the number of permits configured for this call
+   * @throws IllegalArgumentException if the key is used with inconsistent permit counts
+   */
+  private void validatePermitsConsistency(@NonNull String fullKey, int permits) {
+    Integer existingPermits = keyToPermits.putIfAbsent(fullKey, permits);
+    if (existingPermits != null && existingPermits != permits) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Semaphore key '%s' is used with inconsistent permits: %d (existing) vs %d (current). "
+                  + "Each key must have the same permits across all usages.",
+              fullKey, existingPermits, permits));
+    }
   }
 
   // ========== Builder Class ==========
@@ -391,7 +469,8 @@ public class LocksmithSemaphoreTemplate {
      */
     @Nullable
     public String tryAcquire() {
-      return doTryAcquirePermit(key, permits, waitTime, leaseTime);
+      boolean immediateMode = waitTime.isZero();
+      return doTryAcquirePermit(key, permits, waitTime, leaseTime, immediateMode);
     }
 
     /**
@@ -407,7 +486,8 @@ public class LocksmithSemaphoreTemplate {
      */
     @Nullable
     public <T> T execute(@NonNull SemaphoreCallback<T> callback) throws Exception {
-      return doExecuteWithPermit(key, permits, waitTime, leaseTime, callback);
+      boolean immediateMode = waitTime.isZero();
+      return doExecuteWithPermit(key, permits, waitTime, leaseTime, immediateMode, callback);
     }
   }
 }
