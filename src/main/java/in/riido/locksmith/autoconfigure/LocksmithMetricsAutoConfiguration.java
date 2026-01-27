@@ -1,6 +1,7 @@
 package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.metrics.LockMetrics;
+import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.jspecify.annotations.NonNull;
@@ -34,12 +35,15 @@ import org.springframework.context.annotation.Bean;
  *     metrics-enabled: true
  *   semaphore:
  *     metrics-enabled: true
+ *   rate-limit:
+ *     metrics-enabled: true
  * }</pre>
  *
  * @author Garvit Joshi
  * @since 2.1.0
  * @see LockMetrics
  * @see SemaphoreMetrics
+ * @see RateLimitMetrics
  */
 @AutoConfiguration
 @AutoConfigureBefore(LocksmithAutoConfiguration.class)
@@ -82,5 +86,21 @@ public class LocksmithMetricsAutoConfiguration {
   public SemaphoreMetrics semaphoreMetrics(@NonNull MeterRegistry registry) {
     LOG.info("Initializing locksmith semaphore metrics");
     return new SemaphoreMetrics(registry);
+  }
+
+  /**
+   * Creates the rate limit metrics bean.
+   *
+   * @param registry the Micrometer registry
+   * @return the configured RateLimitMetrics
+   * @since 3.0.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnProperty(name = "locksmith.rate-limit.metrics-enabled", havingValue = "true")
+  @NonNull
+  public RateLimitMetrics rateLimitMetrics(@NonNull MeterRegistry registry) {
+    LOG.info("Initializing locksmith rate limit metrics");
+    return new RateLimitMetrics(registry);
   }
 }

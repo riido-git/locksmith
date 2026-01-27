@@ -49,6 +49,7 @@ class DistributedLockAspectTest {
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false, false),
+            null,
             null);
     aspect = new DistributedLockAspect(redissonClient, lockProperties, applicationContext);
     joinPoint = mock(ProceedingJoinPoint.class);

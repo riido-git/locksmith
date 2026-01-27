@@ -59,7 +59,8 @@ class DistributedSemaphoreAspectTest {
         new LocksmithProperties(
             null,
             new SemaphoreProperties(
-                Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false));
+                Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false),
+            null);
     aspect = new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
 
     joinPoint = mock(ProceedingJoinPoint.class);
@@ -263,7 +264,8 @@ class DistributedSemaphoreAspectTest {
           new LocksmithProperties(
               null,
               new SemaphoreProperties(
-                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false));
+                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
+              null);
       DistributedSemaphoreAspect shortLeaseAspect =
           new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
 
@@ -293,7 +295,8 @@ class DistributedSemaphoreAspectTest {
           new LocksmithProperties(
               null,
               new SemaphoreProperties(
-                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false));
+                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
+              null);
       DistributedSemaphoreAspect shortLeaseAspect =
           new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
 
