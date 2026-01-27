@@ -32,13 +32,15 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
 @ConfigurationProperties(prefix = "locksmith")
 public record LocksmithProperties(
     @NestedConfigurationProperty @NonNull LockProperties lock,
-    @NestedConfigurationProperty @NonNull SemaphoreProperties semaphore) {
+    @NestedConfigurationProperty @NonNull SemaphoreProperties semaphore,
+    @NestedConfigurationProperty @NonNull RateLimitProperties rateLimit) {
 
   /**
    * Compact constructor that applies default values for null inputs.
    *
    * @param lock the lock properties, or null to use defaults
    * @param semaphore the semaphore properties, or null to use defaults
+   * @param rateLimit the rate limit properties, or null to use defaults
    */
   public LocksmithProperties {
     if (lock == null) {
@@ -46,6 +48,9 @@ public record LocksmithProperties(
     }
     if (semaphore == null) {
       semaphore = SemaphoreProperties.defaults();
+    }
+    if (rateLimit == null) {
+      rateLimit = RateLimitProperties.defaults();
     }
   }
 
@@ -56,13 +61,20 @@ public record LocksmithProperties(
    */
   @NonNull
   public static LocksmithProperties defaults() {
-    return new LocksmithProperties(LockProperties.defaults(), SemaphoreProperties.defaults());
+    return new LocksmithProperties(
+        LockProperties.defaults(), SemaphoreProperties.defaults(), RateLimitProperties.defaults());
   }
 
   @Override
   @NonNull
   public String toString() {
-    return "LocksmithProperties[lock=" + lock + ", semaphore=" + semaphore + "]";
+    return "LocksmithProperties[lock="
+        + lock
+        + ", semaphore="
+        + semaphore
+        + ", rateLimit="
+        + rateLimit
+        + "]";
   }
 
   /**
@@ -242,6 +254,85 @@ public record LocksmithProperties(
       return "SemaphoreProperties[leaseTime="
           + leaseTime
           + ", waitTime="
+          + waitTime
+          + ", keyPrefix='"
+          + keyPrefix
+          + "', debug="
+          + debug
+          + ", metricsEnabled="
+          + metricsEnabled
+          + "]";
+    }
+  }
+
+  /**
+   * Configuration properties for distributed rate limiters.
+   *
+   * @param waitTime The default time to wait for acquiring a permit when using WAIT_AND_SKIP mode.
+   *     Default: 60 seconds.
+   * @param keyPrefix The prefix to use for all rate limiter keys in Redis. Default: "ratelimit:".
+   * @param debug When enabled, logs detailed information about rate limit operations including key
+   *     resolution, permit acquisition, timing, and status. Default: false.
+   * @param metricsEnabled When enabled, records Micrometer metrics for rate limit operations.
+   *     Requires micrometer-core on classpath and a MeterRegistry bean. Default: false.
+   * @since 3.0.0
+   */
+  public record RateLimitProperties(
+      @NonNull Duration waitTime,
+      @NonNull String keyPrefix,
+      @NonNull Boolean debug,
+      @NonNull Boolean metricsEnabled) {
+
+    /** Default wait time for rate limiters. */
+    public static final Duration DEFAULT_WAIT_TIME = Duration.ofSeconds(60);
+
+    /** Default key prefix for rate limiters. */
+    public static final String DEFAULT_KEY_PREFIX = "ratelimit:";
+
+    /** Default debug mode. */
+    public static final Boolean DEFAULT_DEBUG = Boolean.FALSE;
+
+    /** Default metrics enabled. */
+    public static final Boolean DEFAULT_METRICS_ENABLED = Boolean.FALSE;
+
+    /**
+     * Compact constructor that applies default values for null or invalid inputs.
+     *
+     * @param waitTime the wait time, or null to use default
+     * @param keyPrefix the key prefix, or null to use default
+     * @param debug the debug mode, or null to use default
+     * @param metricsEnabled the metrics enabled flag, or null to use default
+     */
+    public RateLimitProperties {
+      if (waitTime == null || waitTime.isNegative()) {
+        waitTime = DEFAULT_WAIT_TIME;
+      }
+      if (keyPrefix == null || keyPrefix.isBlank()) {
+        keyPrefix = DEFAULT_KEY_PREFIX;
+      }
+      if (debug == null) {
+        debug = DEFAULT_DEBUG;
+      }
+      if (metricsEnabled == null) {
+        metricsEnabled = DEFAULT_METRICS_ENABLED;
+      }
+    }
+
+    /**
+     * Creates a new instance with all default values.
+     *
+     * @return a new RateLimitProperties with default configuration
+     */
+    @NonNull
+    public static RateLimitProperties defaults() {
+      return new RateLimitProperties(
+          DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG, DEFAULT_METRICS_ENABLED);
+    }
+
+    @Override
+    @NonNull
+    public String toString() {
+      return "RateLimitProperties[waitTime="
           + waitTime
           + ", keyPrefix='"
           + keyPrefix

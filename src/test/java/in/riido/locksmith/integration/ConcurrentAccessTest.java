@@ -59,6 +59,7 @@ class ConcurrentAccessTest {
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(1), Duration.ofSeconds(30), "concurrent:", false, false),
+            null,
             null);
     DistributedLockAspect aspect =
         new DistributedLockAspect(redissonClient, properties, new GenericApplicationContext());

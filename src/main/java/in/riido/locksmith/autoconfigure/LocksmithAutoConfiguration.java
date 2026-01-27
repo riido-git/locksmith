@@ -2,9 +2,12 @@ package in.riido.locksmith.autoconfigure;
 
 import in.riido.locksmith.aspect.DistributedLockAspect;
 import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
+import in.riido.locksmith.aspect.RateLimitAspect;
 import in.riido.locksmith.metrics.LockMetrics;
+import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
 import in.riido.locksmith.template.LocksmithLockTemplate;
+import in.riido.locksmith.template.LocksmithRateLimitTemplate;
 import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -166,5 +169,58 @@ public class LocksmithAutoConfiguration {
         "Initializing locksmith semaphore template, Metrics: {}",
         semaphoreMetrics != null ? "enabled" : "disabled");
     return new LocksmithSemaphoreTemplate(redissonClient, properties, semaphoreMetrics);
+  }
+
+  /**
+   * Creates the rate limit aspect bean.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @param applicationContext the Spring application context for handler bean lookup
+   * @param rateLimitMetricsProvider optional rate limit metrics provider for observability
+   * @return the configured RateLimitAspect
+   * @since 3.0.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @NonNull
+  public RateLimitAspect rateLimitAspect(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ApplicationContext applicationContext,
+      @NonNull ObjectProvider<RateLimitMetrics> rateLimitMetricsProvider) {
+    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
+    String springBootVersion = SpringBootVersion.getVersion();
+    @Nullable RateLimitMetrics rateLimitMetrics = rateLimitMetricsProvider.getIfAvailable();
+    LOG.info(
+        "Initializing locksmith rate limit aspect with Spring Boot {} and Redisson {} - Rate Limit Properties: {}, Metrics: {}",
+        springBootVersion,
+        redissonVersion,
+        properties.rateLimit(),
+        rateLimitMetrics != null ? "enabled" : "disabled");
+    return new RateLimitAspect(redissonClient, properties, applicationContext, rateLimitMetrics);
+  }
+
+  /**
+   * Creates the rate limit template bean for programmatic rate limit access.
+   *
+   * @param redissonClient the Redisson client (must be provided by the user)
+   * @param properties the locksmith configuration properties
+   * @param rateLimitMetricsProvider optional rate limit metrics provider for observability
+   * @return the configured LocksmithRateLimitTemplate
+   * @since 3.0.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @NonNull
+  public LocksmithRateLimitTemplate locksmithRateLimitTemplate(
+      @NonNull RedissonClient redissonClient,
+      @NonNull LocksmithProperties properties,
+      @NonNull ObjectProvider<RateLimitMetrics> rateLimitMetricsProvider) {
+    @Nullable RateLimitMetrics rateLimitMetrics = rateLimitMetricsProvider.getIfAvailable();
+    LOG.info(
+        "Initializing locksmith rate limit template, Metrics: {}",
+        rateLimitMetrics != null ? "enabled" : "disabled");
+    return new LocksmithRateLimitTemplate(redissonClient, properties, rateLimitMetrics);
   }
 }

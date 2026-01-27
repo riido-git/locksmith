@@ -50,7 +50,8 @@ class LocksmithSemaphoreTemplateIntegrationTest {
         new LocksmithProperties(
             null,
             new LocksmithProperties.SemaphoreProperties(
-                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false, false));
+                Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false, false),
+            null);
     template = new LocksmithSemaphoreTemplate(redissonClient, properties);
     final var keys = redissonClient.getKeys();
     if (keys != null && keys.count() > 0) {

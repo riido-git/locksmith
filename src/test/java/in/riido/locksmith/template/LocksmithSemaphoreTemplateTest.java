@@ -34,7 +34,8 @@ class LocksmithSemaphoreTemplateTest {
         new LocksmithProperties(
             null,
             new LocksmithProperties.SemaphoreProperties(
-                Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false));
+                Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false),
+            null);
     template = new LocksmithSemaphoreTemplate(redissonClient, properties);
     semaphore = mock(RPermitExpirableSemaphore.class);
     metaBucket = mock(RBucket.class);
@@ -376,7 +377,8 @@ class LocksmithSemaphoreTemplateTest {
           new LocksmithProperties(
               null,
               new LocksmithProperties.SemaphoreProperties(
-                  Duration.ofMinutes(5), Duration.ofSeconds(60), "myapp:", false, false));
+                  Duration.ofMinutes(5), Duration.ofSeconds(60), "myapp:", false, false),
+              null);
       LocksmithSemaphoreTemplate customTemplate =
           new LocksmithSemaphoreTemplate(redissonClient, customProperties);
 

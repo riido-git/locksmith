@@ -51,6 +51,7 @@ class LocksmithLockTemplateIntegrationTest {
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
                 Duration.ofMinutes(1), Duration.ofSeconds(10), "test:", false, false),
+            null,
             null);
     template = new LocksmithLockTemplate(redissonClient, properties);
     final var keys = redissonClient.getKeys();

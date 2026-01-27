@@ -68,7 +68,8 @@ class SemaphoreConcurrentAccessTest {
         new LocksmithProperties(
             null,
             new SemaphoreProperties(
-                Duration.ofMinutes(5), Duration.ofSeconds(30), "concurrent:", false, false));
+                Duration.ofMinutes(5), Duration.ofSeconds(30), "concurrent:", false, false),
+            null);
     DistributedSemaphoreAspect aspect =
         new DistributedSemaphoreAspect(redissonClient, properties, new GenericApplicationContext());
 
