@@ -259,6 +259,84 @@ class LocksmithAutoConfigurationTest {
   }
 
   @Nested
+  @DisplayName("Enabled Property Tests")
+  class EnabledPropertyTests {
+
+    @Test
+    @DisplayName("Should not create lock beans when lock is disabled")
+    void shouldNotCreateLockBeansWhenLockDisabled() {
+      contextRunner
+          .withUserConfiguration(RedissonClientConfiguration.class)
+          .withPropertyValues("locksmith.lock.enabled=false")
+          .run(
+              context -> {
+                assertThat(context).doesNotHaveBean(DistributedLockAspect.class);
+                assertThat(context)
+                    .doesNotHaveBean(in.riido.locksmith.template.LocksmithLockTemplate.class);
+              });
+    }
+
+    @Test
+    @DisplayName("Should not create semaphore beans when semaphore is disabled")
+    void shouldNotCreateSemaphoreBeansWhenSemaphoreDisabled() {
+      contextRunner
+          .withUserConfiguration(RedissonClientConfiguration.class)
+          .withPropertyValues("locksmith.semaphore.enabled=false")
+          .run(
+              context -> {
+                assertThat(context).doesNotHaveBean(DistributedSemaphoreAspect.class);
+                assertThat(context)
+                    .doesNotHaveBean(in.riido.locksmith.template.LocksmithSemaphoreTemplate.class);
+              });
+    }
+
+    @Test
+    @DisplayName("Should not create rate limit beans when rate limit is disabled")
+    void shouldNotCreateRateLimitBeansWhenRateLimitDisabled() {
+      contextRunner
+          .withUserConfiguration(RedissonClientConfiguration.class)
+          .withPropertyValues("locksmith.rate-limit.enabled=false")
+          .run(
+              context -> {
+                assertThat(context)
+                    .doesNotHaveBean(in.riido.locksmith.aspect.RateLimitAspect.class);
+                assertThat(context)
+                    .doesNotHaveBean(in.riido.locksmith.template.LocksmithRateLimitTemplate.class);
+              });
+    }
+
+    @Test
+    @DisplayName("Should create all beans when enabled is true (default)")
+    void shouldCreateAllBeansWhenEnabledIsTrue() {
+      contextRunner
+          .withUserConfiguration(RedissonClientConfiguration.class)
+          .run(
+              context -> {
+                assertThat(context).hasSingleBean(DistributedLockAspect.class);
+                assertThat(context).hasSingleBean(DistributedSemaphoreAspect.class);
+                assertThat(context).hasSingleBean(in.riido.locksmith.aspect.RateLimitAspect.class);
+              });
+    }
+
+    @Test
+    @DisplayName("Should allow disabling only specific aspects")
+    void shouldAllowDisablingOnlySpecificAspects() {
+      contextRunner
+          .withUserConfiguration(RedissonClientConfiguration.class)
+          .withPropertyValues(
+              "locksmith.lock.enabled=true",
+              "locksmith.semaphore.enabled=false",
+              "locksmith.rate-limit.enabled=true")
+          .run(
+              context -> {
+                assertThat(context).hasSingleBean(DistributedLockAspect.class);
+                assertThat(context).doesNotHaveBean(DistributedSemaphoreAspect.class);
+                assertThat(context).hasSingleBean(in.riido.locksmith.aspect.RateLimitAspect.class);
+              });
+    }
+  }
+
+  @Nested
   @DisplayName("Context Failure Tests")
   class ContextFailureTests {
 

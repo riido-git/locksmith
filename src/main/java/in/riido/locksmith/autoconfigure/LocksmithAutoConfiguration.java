@@ -20,6 +20,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -68,6 +69,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the distributed lock aspect bean.
    *
+   * <p>This bean is only created when {@code locksmith.lock.enabled} is {@code true} (the default).
+   * Set it to {@code false} to disable the lock aspect entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param applicationContext the Spring application context for handler bean lookup
@@ -76,6 +80,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.lock.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public DistributedLockAspect distributedLockAspect(
       @NonNull RedissonClient redissonClient,
@@ -97,6 +105,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the distributed semaphore aspect bean.
    *
+   * <p>This bean is only created when {@code locksmith.semaphore.enabled} is {@code true} (the
+   * default). Set it to {@code false} to disable the semaphore aspect entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param applicationContext the Spring application context for handler bean lookup
@@ -106,6 +117,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.semaphore.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public DistributedSemaphoreAspect distributedSemaphoreAspect(
       @NonNull RedissonClient redissonClient,
@@ -128,6 +143,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the lock template bean for programmatic lock access.
    *
+   * <p>This bean is only created when {@code locksmith.lock.enabled} is {@code true} (the default).
+   * Set it to {@code false} to disable the lock template entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param lockMetricsProvider optional lock metrics provider for observability
@@ -136,6 +154,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.lock.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public LocksmithLockTemplate locksmithLockTemplate(
       @NonNull RedissonClient redissonClient,
@@ -151,6 +173,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the semaphore template bean for programmatic semaphore access.
    *
+   * <p>This bean is only created when {@code locksmith.semaphore.enabled} is {@code true} (the
+   * default). Set it to {@code false} to disable the semaphore template entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param semaphoreMetricsProvider optional semaphore metrics provider for observability
@@ -159,6 +184,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.semaphore.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public LocksmithSemaphoreTemplate locksmithSemaphoreTemplate(
       @NonNull RedissonClient redissonClient,
@@ -174,6 +203,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the rate limit aspect bean.
    *
+   * <p>This bean is only created when {@code locksmith.rate-limit.enabled} is {@code true} (the
+   * default). Set it to {@code false} to disable the rate limit aspect entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param applicationContext the Spring application context for handler bean lookup
@@ -183,6 +215,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.rate-limit.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public RateLimitAspect rateLimitAspect(
       @NonNull RedissonClient redissonClient,
@@ -204,6 +240,9 @@ public class LocksmithAutoConfiguration {
   /**
    * Creates the rate limit template bean for programmatic rate limit access.
    *
+   * <p>This bean is only created when {@code locksmith.rate-limit.enabled} is {@code true} (the
+   * default). Set it to {@code false} to disable the rate limit template entirely.
+   *
    * @param redissonClient the Redisson client (must be provided by the user)
    * @param properties the locksmith configuration properties
    * @param rateLimitMetricsProvider optional rate limit metrics provider for observability
@@ -212,6 +251,10 @@ public class LocksmithAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(
+      name = "locksmith.rate-limit.enabled",
+      havingValue = "true",
+      matchIfMissing = true)
   @NonNull
   public LocksmithRateLimitTemplate locksmithRateLimitTemplate(
       @NonNull RedissonClient redissonClient,

@@ -48,7 +48,7 @@ class DistributedLockAspectTest {
     LocksmithProperties lockProperties =
         new LocksmithProperties(
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false, false),
+                true, Duration.ofMinutes(10), Duration.ofSeconds(60), "lock:", false, false),
             null,
             null);
     aspect = new DistributedLockAspect(redissonClient, lockProperties, applicationContext);
@@ -926,7 +926,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultLeaseTimeWhenNull() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                null, Duration.ofSeconds(60), "lock:", false, false);
+                null, null, Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -936,7 +936,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultLeaseTimeWhenZero() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ZERO, Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ZERO, Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -946,7 +946,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultLeaseTimeWhenNegative() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ofMinutes(-5), Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
       }
@@ -956,7 +956,7 @@ class DistributedLockAspectTest {
       void shouldUseCustomLeaseTimeWhenPositive() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ofMinutes(15), Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
       }
@@ -966,7 +966,7 @@ class DistributedLockAspectTest {
       void shouldAcceptLeaseTimeInSeconds() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofSeconds(300), Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ofSeconds(300), Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofSeconds(300), props.leaseTime());
       }
@@ -976,7 +976,7 @@ class DistributedLockAspectTest {
       void shouldAcceptLeaseTimeInHours() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ofHours(1), Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofHours(1), props.leaseTime());
       }
@@ -986,7 +986,7 @@ class DistributedLockAspectTest {
       void shouldAcceptLeaseTimeInMillis() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMillis(5000), Duration.ofSeconds(60), "lock:", false, false);
+                null, Duration.ofMillis(5000), Duration.ofSeconds(60), "lock:", false, false);
 
         assertEquals(Duration.ofMillis(5000), props.leaseTime());
       }
@@ -1001,7 +1001,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultWaitTimeWhenNull() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), null, "lock:", false, false);
+                null, Duration.ofMinutes(10), null, "lock:", false, false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
       }
@@ -1011,7 +1011,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultWaitTimeWhenNegative() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(-30), "lock:", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(-30), "lock:", false, false);
 
         assertEquals(Duration.ofSeconds(60), props.waitTime());
       }
@@ -1021,7 +1021,7 @@ class DistributedLockAspectTest {
       void shouldAllowZeroWaitTime() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ZERO, "lock:", false, false);
+                null, Duration.ofMinutes(10), Duration.ZERO, "lock:", false, false);
 
         assertEquals(Duration.ZERO, props.waitTime());
       }
@@ -1031,7 +1031,7 @@ class DistributedLockAspectTest {
       void shouldUseCustomWaitTimeWhenPositive() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(90), "lock:", false, false);
 
         assertEquals(Duration.ofSeconds(90), props.waitTime());
       }
@@ -1041,7 +1041,7 @@ class DistributedLockAspectTest {
       void shouldAcceptWaitTimeInMinutes() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false, false);
+                null, Duration.ofMinutes(10), Duration.ofMinutes(2), "lock:", false, false);
 
         assertEquals(Duration.ofMinutes(2), props.waitTime());
       }
@@ -1051,7 +1051,7 @@ class DistributedLockAspectTest {
       void shouldAcceptWaitTimeInMillis() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false, false);
+                null, Duration.ofMinutes(10), Duration.ofMillis(500), "lock:", false, false);
 
         assertEquals(Duration.ofMillis(500), props.waitTime());
       }
@@ -1066,7 +1066,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultKeyPrefixWhenNull() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), null, false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(60), null, false, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1076,7 +1076,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultKeyPrefixWhenEmpty() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(60), "", false, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1086,7 +1086,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultKeyPrefixWhenBlankWithSpaces() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(60), "   ", false, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1096,7 +1096,7 @@ class DistributedLockAspectTest {
       void shouldUseDefaultKeyPrefixWhenBlankWithTabs() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(60), "\t\t", false, false);
 
         assertEquals("lock:", props.keyPrefix());
       }
@@ -1106,7 +1106,7 @@ class DistributedLockAspectTest {
       void shouldUseCustomKeyPrefixWhenValid() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false, false);
+                null, Duration.ofMinutes(10), Duration.ofSeconds(60), "myapp:", false, false);
 
         assertEquals("myapp:", props.keyPrefix());
       }
@@ -1116,7 +1116,12 @@ class DistributedLockAspectTest {
       void shouldUseCustomKeyPrefixWithoutColon() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "distributed-lock", false, false);
+                null,
+                Duration.ofMinutes(10),
+                Duration.ofSeconds(60),
+                "distributed-lock",
+                false,
+                false);
 
         assertEquals("distributed-lock", props.keyPrefix());
       }
@@ -1126,7 +1131,12 @@ class DistributedLockAspectTest {
       void shouldPreserveKeyPrefixWithSpecialCharacters() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(10), Duration.ofSeconds(60), "app:env:lock:", false, false);
+                null,
+                Duration.ofMinutes(10),
+                Duration.ofSeconds(60),
+                "app:env:lock:",
+                false,
+                false);
 
         assertEquals("app:env:lock:", props.keyPrefix());
       }
@@ -1165,7 +1175,7 @@ class DistributedLockAspectTest {
       @DisplayName("Should use all defaults when all parameters are null")
       void shouldUseAllDefaultsWhenAllParametersAreNull() {
         LocksmithProperties.LockProperties props =
-            new LocksmithProperties.LockProperties(null, null, null, false, false);
+            new LocksmithProperties.LockProperties(null, null, null, null, false, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(60), props.waitTime());
@@ -1182,7 +1192,7 @@ class DistributedLockAspectTest {
       void shouldUseAllCustomValuesWhenValid() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(15), Duration.ofSeconds(90), "mylock:", false, false);
+                null, Duration.ofMinutes(15), Duration.ofSeconds(90), "mylock:", false, false);
 
         assertEquals(Duration.ofMinutes(15), props.leaseTime());
         assertEquals(Duration.ofSeconds(90), props.waitTime());
@@ -1194,7 +1204,7 @@ class DistributedLockAspectTest {
       void shouldHandleMixedValidAndInvalidValues() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false, false);
+                null, Duration.ofMinutes(-5), Duration.ofSeconds(30), null, false, false);
 
         assertEquals(Duration.ofMinutes(10), props.leaseTime());
         assertEquals(Duration.ofSeconds(30), props.waitTime());
@@ -1206,7 +1216,7 @@ class DistributedLockAspectTest {
       void shouldHandleVeryLargeDurationValues() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofDays(1), Duration.ofHours(2), "biglock:", false, false);
+                null, Duration.ofDays(1), Duration.ofHours(2), "biglock:", false, false);
 
         assertEquals(Duration.ofDays(1), props.leaseTime());
         assertEquals(Duration.ofHours(2), props.waitTime());
@@ -1218,7 +1228,7 @@ class DistributedLockAspectTest {
       void shouldHandleVerySmallPositiveDurationValues() {
         LocksmithProperties.LockProperties props =
             new LocksmithProperties.LockProperties(
-                Duration.ofNanos(1000000), Duration.ofMillis(1), "smalllock:", false, false);
+                null, Duration.ofNanos(1000000), Duration.ofMillis(1), "smalllock:", false, false);
 
         assertEquals(Duration.ofNanos(1000000), props.leaseTime());
         assertEquals(Duration.ofMillis(1), props.waitTime());

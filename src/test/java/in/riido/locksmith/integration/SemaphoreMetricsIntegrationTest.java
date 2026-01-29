@@ -62,7 +62,12 @@ class SemaphoreMetricsIntegrationTest {
         new LocksmithProperties(
             null,
             new LocksmithProperties.SemaphoreProperties(
-                Duration.ofMinutes(1), Duration.ofSeconds(10), "semaphore-metrics:", false, true),
+                true,
+                Duration.ofMinutes(1),
+                Duration.ofSeconds(10),
+                "semaphore-metrics:",
+                false,
+                true),
             null);
     DistributedSemaphoreAspect aspect =
         new DistributedSemaphoreAspect(

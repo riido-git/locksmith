@@ -41,7 +41,7 @@ class RateLimitAspectTest {
             null,
             null,
             new LocksmithProperties.RateLimitProperties(
-                Duration.ofMinutes(1), "ratelimit:", false, false));
+                true, Duration.ofMinutes(1), "ratelimit:", false, false));
     aspect = new RateLimitAspect(redissonClient, properties, applicationContext);
   }
 
@@ -63,7 +63,7 @@ class RateLimitAspectTest {
               null,
               null,
               new LocksmithProperties.RateLimitProperties(
-                  Duration.ofMinutes(1), "ratelimit:", false, true));
+                  true, Duration.ofMinutes(1), "ratelimit:", false, true));
       RateLimitAspect aspectWithMetrics =
           new RateLimitAspect(redissonClient, metricsProps, applicationContext, null);
 
@@ -78,7 +78,7 @@ class RateLimitAspectTest {
               null,
               null,
               new LocksmithProperties.RateLimitProperties(
-                  Duration.ofSeconds(30), "custom:", true, true));
+                  true, Duration.ofSeconds(30), "custom:", true, true));
       RateLimitAspect customAspect =
           new RateLimitAspect(redissonClient, customProps, applicationContext);
 

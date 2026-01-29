@@ -59,7 +59,7 @@ class DistributedSemaphoreAspectTest {
         new LocksmithProperties(
             null,
             new SemaphoreProperties(
-                Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false),
+                true, Duration.ofMinutes(5), Duration.ofSeconds(60), "semaphore:", false, false),
             null);
     aspect = new DistributedSemaphoreAspect(redissonClient, properties, applicationContext);
 
@@ -264,7 +264,7 @@ class DistributedSemaphoreAspectTest {
           new LocksmithProperties(
               null,
               new SemaphoreProperties(
-                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
+                  true, Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
               null);
       DistributedSemaphoreAspect shortLeaseAspect =
           new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
@@ -295,7 +295,7 @@ class DistributedSemaphoreAspectTest {
           new LocksmithProperties(
               null,
               new SemaphoreProperties(
-                  Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
+                  true, Duration.ofMillis(1), Duration.ofSeconds(60), "semaphore:", false, false),
               null);
       DistributedSemaphoreAspect shortLeaseAspect =
           new DistributedSemaphoreAspect(redissonClient, shortLeaseProps, applicationContext);
@@ -422,8 +422,9 @@ class DistributedSemaphoreAspectTest {
     @Test
     @DisplayName("Should use default lease time when null")
     void shouldUseDefaultLeaseTime() {
-      SemaphoreProperties props = new SemaphoreProperties(null, null, null, null, null);
+      SemaphoreProperties props = new SemaphoreProperties(null, null, null, null, null, null);
 
+      assertEquals(SemaphoreProperties.DEFAULT_ENABLED, props.enabled());
       assertEquals(SemaphoreProperties.DEFAULT_LEASE_TIME, props.leaseTime());
       assertEquals(SemaphoreProperties.DEFAULT_WAIT_TIME, props.waitTime());
       assertEquals(SemaphoreProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
@@ -434,7 +435,7 @@ class DistributedSemaphoreAspectTest {
     @DisplayName("Should use default lease time when negative")
     void shouldUseDefaultLeaseTimeWhenNegative() {
       SemaphoreProperties props =
-          new SemaphoreProperties(Duration.ofSeconds(-1), null, null, null, null);
+          new SemaphoreProperties(null, Duration.ofSeconds(-1), null, null, null, null);
 
       assertEquals(SemaphoreProperties.DEFAULT_LEASE_TIME, props.leaseTime());
     }
@@ -442,7 +443,7 @@ class DistributedSemaphoreAspectTest {
     @Test
     @DisplayName("Should use default key prefix when blank")
     void shouldUseDefaultKeyPrefixWhenBlank() {
-      SemaphoreProperties props = new SemaphoreProperties(null, null, "   ", null, null);
+      SemaphoreProperties props = new SemaphoreProperties(null, null, null, "   ", null, null);
 
       assertEquals(SemaphoreProperties.DEFAULT_KEY_PREFIX, props.keyPrefix());
     }

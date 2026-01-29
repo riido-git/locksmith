@@ -62,7 +62,7 @@ class RateLimitIntegrationTest {
             null,
             null,
             new LocksmithProperties.RateLimitProperties(
-                Duration.ofMinutes(1), "ratelimit-test:", false, false));
+                true, Duration.ofMinutes(1), "ratelimit-test:", false, false));
     RateLimitAspect aspect =
         new RateLimitAspect(redissonClient, properties, new GenericApplicationContext());
 

@@ -36,7 +36,7 @@ class LocksmithRateLimitTemplateTest {
             null,
             null,
             new LocksmithProperties.RateLimitProperties(
-                Duration.ofMinutes(1), "ratelimit:", false, false));
+                true, Duration.ofMinutes(1), "ratelimit:", false, false));
     template = new LocksmithRateLimitTemplate(redissonClient, properties);
   }
 
@@ -237,7 +237,7 @@ class LocksmithRateLimitTemplateTest {
               null,
               null,
               new LocksmithProperties.RateLimitProperties(
-                  Duration.ofMinutes(1), "ratelimit:", false, true));
+                  true, Duration.ofMinutes(1), "ratelimit:", false, true));
       template = new LocksmithRateLimitTemplate(redissonClient, properties, metrics);
 
       when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
@@ -259,7 +259,7 @@ class LocksmithRateLimitTemplateTest {
               null,
               null,
               new LocksmithProperties.RateLimitProperties(
-                  Duration.ofMinutes(1), "ratelimit:", false, true));
+                  true, Duration.ofMinutes(1), "ratelimit:", false, true));
       template = new LocksmithRateLimitTemplate(redissonClient, properties, metrics);
 
       when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);

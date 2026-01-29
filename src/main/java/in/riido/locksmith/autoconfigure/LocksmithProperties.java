@@ -12,20 +12,29 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  *
  * <pre>{@code
  * # Lock configuration
+ * locksmith.lock.enabled=true
  * locksmith.lock.lease-time=10m
  * locksmith.lock.wait-time=60s
  * locksmith.lock.key-prefix=lock:
  * locksmith.lock.debug=false
  *
  * # Semaphore configuration
+ * locksmith.semaphore.enabled=true
  * locksmith.semaphore.lease-time=5m
  * locksmith.semaphore.wait-time=60s
  * locksmith.semaphore.key-prefix=semaphore:
  * locksmith.semaphore.debug=false
+ *
+ * # Rate limit configuration
+ * locksmith.rate-limit.enabled=true
+ * locksmith.rate-limit.wait-time=60s
+ * locksmith.rate-limit.key-prefix=ratelimit:
+ * locksmith.rate-limit.debug=false
  * }</pre>
  *
  * @param lock Configuration properties for distributed locks.
  * @param semaphore Configuration properties for distributed semaphores.
+ * @param rateLimit Configuration properties for distributed rate limiters.
  * @author Garvit Joshi
  * @since 2.0.0
  */
@@ -80,6 +89,8 @@ public record LocksmithProperties(
   /**
    * Configuration properties for distributed locks.
    *
+   * @param enabled When set to false, disables the distributed lock aspect and template. Methods
+   *     annotated with @DistributedLock will execute without acquiring locks. Default: true.
    * @param leaseTime The default time after which the lock is automatically released. This prevents
    *     deadlocks if a server crashes while holding a lock. Default: 10 minutes.
    * @param waitTime The default time to wait for acquiring a lock when using WAIT_AND_SKIP mode.
@@ -91,11 +102,15 @@ public record LocksmithProperties(
    *     micrometer-core on classpath and a MeterRegistry bean. Default: false.
    */
   public record LockProperties(
+      @NonNull Boolean enabled,
       @NonNull Duration leaseTime,
       @NonNull Duration waitTime,
       @NonNull String keyPrefix,
       @NonNull Boolean debug,
       @NonNull Boolean metricsEnabled) {
+
+    /** Default enabled state for locks. */
+    public static final Boolean DEFAULT_ENABLED = Boolean.TRUE;
 
     /** Default lease time for locks. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(10);
@@ -115,6 +130,7 @@ public record LocksmithProperties(
     /**
      * Compact constructor that applies default values for null or invalid inputs.
      *
+     * @param enabled the enabled flag, or null to use default
      * @param leaseTime the lease time, or null to use default
      * @param waitTime the wait time, or null to use default
      * @param keyPrefix the key prefix, or null to use default
@@ -122,6 +138,9 @@ public record LocksmithProperties(
      * @param metricsEnabled the metrics enabled flag, or null to use default
      */
     public LockProperties {
+      if (enabled == null) {
+        enabled = DEFAULT_ENABLED;
+      }
       if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
         leaseTime = DEFAULT_LEASE_TIME;
       }
@@ -147,6 +166,7 @@ public record LocksmithProperties(
     @NonNull
     public static LockProperties defaults() {
       return new LockProperties(
+          DEFAULT_ENABLED,
           DEFAULT_LEASE_TIME,
           DEFAULT_WAIT_TIME,
           DEFAULT_KEY_PREFIX,
@@ -157,7 +177,9 @@ public record LocksmithProperties(
     @Override
     @NonNull
     public String toString() {
-      return "LockProperties[leaseTime="
+      return "LockProperties[enabled="
+          + enabled
+          + ", leaseTime="
           + leaseTime
           + ", waitTime="
           + waitTime
@@ -174,6 +196,9 @@ public record LocksmithProperties(
   /**
    * Configuration properties for distributed semaphores.
    *
+   * @param enabled When set to false, disables the distributed semaphore aspect and template.
+   *     Methods annotated with @DistributedSemaphore will execute without acquiring permits.
+   *     Default: true.
    * @param leaseTime The default time after which the semaphore permit is automatically released.
    *     This prevents permit leaks if a server crashes while holding a permit. Default: 5 minutes.
    * @param waitTime The default time to wait for acquiring a permit when using WAIT_AND_SKIP mode.
@@ -185,11 +210,15 @@ public record LocksmithProperties(
    *     Requires micrometer-core on classpath and a MeterRegistry bean. Default: false.
    */
   public record SemaphoreProperties(
+      @NonNull Boolean enabled,
       @NonNull Duration leaseTime,
       @NonNull Duration waitTime,
       @NonNull String keyPrefix,
       @NonNull Boolean debug,
       @NonNull Boolean metricsEnabled) {
+
+    /** Default enabled state for semaphores. */
+    public static final Boolean DEFAULT_ENABLED = Boolean.TRUE;
 
     /** Default lease time for semaphores. */
     public static final Duration DEFAULT_LEASE_TIME = Duration.ofMinutes(5);
@@ -209,6 +238,7 @@ public record LocksmithProperties(
     /**
      * Compact constructor that applies default values for null or invalid inputs.
      *
+     * @param enabled the enabled flag, or null to use default
      * @param leaseTime the lease time, or null to use default
      * @param waitTime the wait time, or null to use default
      * @param keyPrefix the key prefix, or null to use default
@@ -216,6 +246,9 @@ public record LocksmithProperties(
      * @param metricsEnabled the metrics enabled flag, or null to use default
      */
     public SemaphoreProperties {
+      if (enabled == null) {
+        enabled = DEFAULT_ENABLED;
+      }
       if (leaseTime == null || leaseTime.isNegative() || leaseTime.isZero()) {
         leaseTime = DEFAULT_LEASE_TIME;
       }
@@ -241,6 +274,7 @@ public record LocksmithProperties(
     @NonNull
     public static SemaphoreProperties defaults() {
       return new SemaphoreProperties(
+          DEFAULT_ENABLED,
           DEFAULT_LEASE_TIME,
           DEFAULT_WAIT_TIME,
           DEFAULT_KEY_PREFIX,
@@ -251,7 +285,9 @@ public record LocksmithProperties(
     @Override
     @NonNull
     public String toString() {
-      return "SemaphoreProperties[leaseTime="
+      return "SemaphoreProperties[enabled="
+          + enabled
+          + ", leaseTime="
           + leaseTime
           + ", waitTime="
           + waitTime
@@ -268,6 +304,8 @@ public record LocksmithProperties(
   /**
    * Configuration properties for distributed rate limiters.
    *
+   * @param enabled When set to false, disables the rate limit aspect and template. Methods
+   *     annotated with @RateLimit will execute without rate limiting. Default: true.
    * @param waitTime The default time to wait for acquiring a permit when using WAIT_AND_SKIP mode.
    *     Default: 60 seconds.
    * @param keyPrefix The prefix to use for all rate limiter keys in Redis. Default: "ratelimit:".
@@ -278,10 +316,14 @@ public record LocksmithProperties(
    * @since 3.0.0
    */
   public record RateLimitProperties(
+      @NonNull Boolean enabled,
       @NonNull Duration waitTime,
       @NonNull String keyPrefix,
       @NonNull Boolean debug,
       @NonNull Boolean metricsEnabled) {
+
+    /** Default enabled state for rate limiters. */
+    public static final Boolean DEFAULT_ENABLED = Boolean.TRUE;
 
     /** Default wait time for rate limiters. */
     public static final Duration DEFAULT_WAIT_TIME = Duration.ofSeconds(60);
@@ -298,12 +340,16 @@ public record LocksmithProperties(
     /**
      * Compact constructor that applies default values for null or invalid inputs.
      *
+     * @param enabled the enabled flag, or null to use default
      * @param waitTime the wait time, or null to use default
      * @param keyPrefix the key prefix, or null to use default
      * @param debug the debug mode, or null to use default
      * @param metricsEnabled the metrics enabled flag, or null to use default
      */
     public RateLimitProperties {
+      if (enabled == null) {
+        enabled = DEFAULT_ENABLED;
+      }
       if (waitTime == null || waitTime.isNegative()) {
         waitTime = DEFAULT_WAIT_TIME;
       }
@@ -326,13 +372,19 @@ public record LocksmithProperties(
     @NonNull
     public static RateLimitProperties defaults() {
       return new RateLimitProperties(
-          DEFAULT_WAIT_TIME, DEFAULT_KEY_PREFIX, DEFAULT_DEBUG, DEFAULT_METRICS_ENABLED);
+          DEFAULT_ENABLED,
+          DEFAULT_WAIT_TIME,
+          DEFAULT_KEY_PREFIX,
+          DEFAULT_DEBUG,
+          DEFAULT_METRICS_ENABLED);
     }
 
     @Override
     @NonNull
     public String toString() {
-      return "RateLimitProperties[waitTime="
+      return "RateLimitProperties[enabled="
+          + enabled
+          + ", waitTime="
           + waitTime
           + ", keyPrefix='"
           + keyPrefix
