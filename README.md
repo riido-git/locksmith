@@ -29,13 +29,13 @@ Add to your `pom.xml`:
 <dependency>
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>2.1.0</version>
+    <version>3.0.0</version>
 </dependency>
 
 <dependency>
     <groupId>org.redisson</groupId>
     <artifactId>redisson</artifactId>
-    <version>4.1.0</version>
+    <version>4.2.0</version>
 </dependency>
 
 <dependency>
@@ -47,8 +47,8 @@ Add to your `pom.xml`:
 For Gradle:
 
 ```groovy
-implementation 'in.riido:locksmith-spring-boot-starter:2.1.0'
-implementation 'org.redisson:redisson:4.1.0'
+implementation 'in.riido:locksmith-spring-boot-starter:3.0.0'
+implementation 'org.redisson:redisson:4.2.0'
 implementation 'org.aspectj:aspectjweaver'
 ```
 

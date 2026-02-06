@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-02-07
+
+### Added
+- **Distributed Rate Limiting** - New `@RateLimit` annotation for controlling request throughput across distributed systems (#44, #7)
+  - Configurable `permits` and `interval` (e.g., 100 requests per minute)
+  - Support for `OVERALL` (shared) and `PER_CLIENT` (per Redisson instance) rate types via `RateType` enum
+  - `SKIP_IMMEDIATELY` and `WAIT_AND_SKIP` acquisition modes
+  - `RateLimitSkipHandler` interface with `RateLimitThrowExceptionHandler` and `RateLimitReturnDefaultHandler` built-in handlers
+  - `RateLimitContext` record for handler context
+  - `RateLimitExceededException` for when rate limit is exceeded
+  - `LocksmithRateLimitTemplate` for programmatic rate limiting with fluent builder
+  - `RateLimitCallback` functional interface
+  - `RateLimitMetrics` - Micrometer metrics integration (opt-in via `locksmith.rate-limit.metrics-enabled`)
+  - SpEL expression support for dynamic keys
+- **Enabled Property** - Conditionally disable lock, semaphore, and rate-limit components
+  - `locksmith.lock.enabled` (default: true)
+  - `locksmith.semaphore.enabled` (default: true)
+  - `locksmith.rate-limit.enabled` (default: true)
+  - Uses `@ConditionalOnProperty` to conditionally create aspects and templates
+
+### Changed
+- Thread safety documentation added to Context records clarifying that args arrays are read-only by convention
+
+### Dependencies
+- Bumped Redisson from 4.1.0 to 4.2.0
+- Bumped maven-compiler-plugin from 3.14.1 to 3.15.0
+
 ## [2.1.0] - 2026-01-26
 
 ### Added
