@@ -289,6 +289,12 @@ public class LocksmithLockTemplate {
       return result;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (acquired) {
+        // InterruptedException came from callback.execute() (user's code), not from
+        // lock acquisition. Propagate the original exception instead of swallowing it.
+        throw e;
+      }
+      // Lock acquisition was interrupted
       if (lockMetrics != null) {
         String reason = immediateMode ? "immediate" : "timeout";
         lockMetrics.recordSkipped(reason);

@@ -221,6 +221,12 @@ public class DistributedSemaphoreAspect {
 
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (permitId != null) {
+        // InterruptedException came from joinPoint.proceed() (user's method), not from
+        // permit acquisition. Propagate the original exception instead of swallowing it.
+        throw e;
+      }
+      // Permit acquisition was interrupted
       LOG.warn(
           "Thread interrupted while waiting for permit from [{}] in [{}]",
           semaphoreKey,

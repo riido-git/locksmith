@@ -244,13 +244,13 @@ public class LocksmithRateLimitTemplate {
 
     LOG.debug("Rate limit permit acquired for [{}], executing callback", fullKey);
     long executionStartTime = System.currentTimeMillis();
-    T result = callback.execute();
-
-    if (rateLimitMetrics != null) {
-      rateLimitMetrics.recordExecutionTime(System.currentTimeMillis() - executionStartTime);
+    try {
+      return callback.execute();
+    } finally {
+      if (rateLimitMetrics != null) {
+        rateLimitMetrics.recordExecutionTime(System.currentTimeMillis() - executionStartTime);
+      }
     }
-
-    return result;
   }
 
   /**

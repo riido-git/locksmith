@@ -218,6 +218,12 @@ public class DistributedLockAspect {
 
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (lockAcquired) {
+        // InterruptedException came from joinPoint.proceed() (user's method), not from
+        // lock acquisition. Propagate the original exception instead of swallowing it.
+        throw e;
+      }
+      // Lock acquisition was interrupted
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
       if (lockMetrics != null) {
         String reason =

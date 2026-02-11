@@ -298,6 +298,12 @@ public class LocksmithSemaphoreTemplate {
       return result;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      if (permitId != null) {
+        // InterruptedException came from callback.execute() (user's code), not from
+        // permit acquisition. Propagate the original exception instead of swallowing it.
+        throw e;
+      }
+      // Permit acquisition was interrupted
       if (semaphoreMetrics != null) {
         String reason = immediateMode ? "immediate" : "timeout";
         semaphoreMetrics.recordSkipped(reason);

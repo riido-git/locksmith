@@ -193,23 +193,25 @@ public class RateLimitAspect {
     }
 
     final long startTime = System.currentTimeMillis();
-    final Object result = joinPoint.proceed();
-    final long executionTime = System.currentTimeMillis() - startTime;
+    try {
+      final Object result = joinPoint.proceed();
 
-    if (rateLimitMetrics != null) {
-      rateLimitMetrics.recordExecutionTime(executionTime);
+      if (debugMode) {
+        final long executionTime = System.currentTimeMillis() - startTime;
+        LOG.info(
+            "Method [{}] executed in {}ms, returnType={}, hasResult={}",
+            methodName,
+            executionTime,
+            signature.getReturnType().getSimpleName(),
+            result != null);
+      }
+
+      return result;
+    } finally {
+      if (rateLimitMetrics != null) {
+        rateLimitMetrics.recordExecutionTime(System.currentTimeMillis() - startTime);
+      }
     }
-
-    if (debugMode) {
-      LOG.info(
-          "Method [{}] executed in {}ms, returnType={}, hasResult={}",
-          methodName,
-          executionTime,
-          signature.getReturnType().getSimpleName(),
-          result != null);
-    }
-
-    return result;
   }
 
   /**
