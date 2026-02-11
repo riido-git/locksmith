@@ -149,7 +149,7 @@ public class LocksmithSemaphoreTemplate {
           fullKey,
           e.getMessage());
     } catch (Exception e) {
-      LOG.warn("Failed to release permit [{}] from [{}]: {}", permitId, fullKey, e.getMessage());
+      LOG.warn("Failed to release permit [{}] from [{}]", permitId, fullKey, e);
     }
   }
 
@@ -322,8 +322,7 @@ public class LocksmithSemaphoreTemplate {
               fullKey,
               e.getMessage());
         } catch (Exception e) {
-          LOG.warn(
-              "Failed to release permit [{}] from [{}]: {}", permitId, fullKey, e.getMessage());
+          LOG.warn("Failed to release permit [{}] from [{}]", permitId, fullKey, e);
         }
       }
     }

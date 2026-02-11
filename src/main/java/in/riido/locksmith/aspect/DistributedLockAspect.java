@@ -126,12 +126,11 @@ public class DistributedLockAspect {
                 + "leaseTime will be ignored as Redisson's watchdog will manage lease renewal.",
             methodName);
       }
-      if (distributedLock.onLeaseExpired() != LeaseExpirationBehavior.IGNORE) {
+      if (distributedLock.onLeaseExpired() == LeaseExpirationBehavior.THROW_EXCEPTION) {
         LOG.warn(
-            "autoRenew is enabled for [{}] but onLeaseExpired is set to {}. "
+            "autoRenew is enabled for [{}] but onLeaseExpired is set to THROW_EXCEPTION. "
                 + "This setting will have no effect as the lock will never expire during execution.",
-            methodName,
-            distributedLock.onLeaseExpired());
+            methodName);
       }
     }
 

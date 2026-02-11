@@ -41,6 +41,14 @@ public final class SpELKeyResolver {
   private static final ExpressionParser EXPRESSION_PARSER = new SpelExpressionParser();
   private static final ParameterNameDiscoverer PARAMETER_NAME_DISCOVERER =
       new DefaultParameterNameDiscoverer();
+
+  /**
+   * Cache of parsed SpEL expressions keyed by the expression string (e.g., {@code "#userId"},
+   * {@code "'user-' + #id"}). This cache is bounded by the number of unique SpEL expression strings
+   * declared in annotations across the codebase, which is determined at compile time. For example,
+   * {@code @DistributedLock(key = "#{#userId}")} always produces the same cache key ({@code
+   * "#userId"}) regardless of how many different {@code userId} values are evaluated at runtime.
+   */
   private static final Map<String, Expression> EXPRESSION_CACHE = new ConcurrentHashMap<>();
 
   private SpELKeyResolver() {
@@ -91,7 +99,11 @@ public final class SpELKeyResolver {
   /**
    * Evaluates a SpEL expression and returns the resolved key.
    *
-   * <p>SpEL expressions are cached after first parse to avoid repeated parsing overhead.
+   * <p>Parsed {@link Expression} objects are cached in {@link #EXPRESSION_CACHE} by the expression
+   * string itself (not the evaluated result). This means the cache size is bounded by the number of
+   * unique SpEL expressions in the codebase — typically one per annotated method. The same cached
+   * {@link Expression} is re-evaluated with a fresh {@link EvaluationContext} on each invocation,
+   * producing different resolved keys from different method arguments without growing the cache.
    *
    * @param spELExpression the SpEL expression to evaluate (without #{} wrapper)
    * @param method the method being invoked

@@ -369,11 +369,11 @@ public class DistributedSemaphoreAspect {
     } catch (Exception e) {
       // Handle other Redis exceptions (e.g., when permit has already expired)
       LOG.warn(
-          "Failed to release permit [{}] from [{}] for [{}]: {}",
+          "Failed to release permit [{}] from [{}] for [{}]",
           permitId,
           semaphoreKey,
           methodName,
-          e.getMessage());
+          e);
     }
   }
 

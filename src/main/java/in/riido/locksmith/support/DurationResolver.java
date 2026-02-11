@@ -37,6 +37,15 @@ public final class DurationResolver {
     if (durationString == null || durationString.isBlank()) {
       return defaultValue;
     }
-    return DurationStyle.detectAndParse(durationString);
+    try {
+      return DurationStyle.detectAndParse(durationString);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "Invalid duration format: '"
+              + durationString
+              + "'. Expected formats: simple (e.g., '10s', '5m', '1h') "
+              + "or ISO-8601 (e.g., 'PT10S', 'PT5M', 'PT1H')",
+          e);
+    }
   }
 }
