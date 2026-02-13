@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-02-14
+
+### Fixed
+- Propagate `InterruptedException` from user methods inside `@DistributedLock`, `@DistributedSemaphore`, and template callbacks instead of silently swallowing it
+- Record rate-limit execution time metrics even when the method throws (wrap with try-finally in `RateLimitAspect` and `LocksmithRateLimitTemplate`)
+- Only warn about `onLeaseExpired` when `THROW_EXCEPTION` is used with `autoRenew`, not for the default `LOG_WARNING` value
+- Log full exception stack traces in semaphore permit release instead of just the message
+- Wrap `DurationResolver` parse errors with helpful context about the invalid input and expected formats
+
+### Changed
+- Document SpEL expression cache bounding semantics in `SpELKeyResolver`
+
 ## [3.0.0] - 2026-02-07
 
 ### Added
