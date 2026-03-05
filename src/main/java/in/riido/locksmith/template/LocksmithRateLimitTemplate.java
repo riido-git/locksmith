@@ -4,6 +4,7 @@ import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
 import in.riido.locksmith.metrics.RateLimitMetrics;
+import in.riido.locksmith.support.RateLimitConfig;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -77,8 +78,8 @@ public class LocksmithRateLimitTemplate {
   private final RateLimitProperties rateLimitProperties;
   @Nullable private final RateLimitMetrics rateLimitMetrics;
 
-  /** Cache to track which keys have been initialized in Redis by this JVM. */
-  private final Map<String, Boolean> initializedKeys = new ConcurrentHashMap<>();
+  /** Cache to track rate limiter configurations per key within this JVM. */
+  private final Map<String, RateLimitConfig> initializedConfigs = new ConcurrentHashMap<>();
 
   /**
    * Constructs a new LocksmithRateLimitTemplate.
@@ -256,7 +257,8 @@ public class LocksmithRateLimitTemplate {
   /**
    * Gets or creates a rate limiter in Redis with the configured rate.
    *
-   * <p>This method is thread-safe and will only initialize each rate limiter once per JVM.
+   * <p>This method is thread-safe and will only initialize each rate limiter once per JVM. It also
+   * validates that the same key is not used with different configurations within this JVM.
    *
    * @param fullKey the full rate limiter key including prefix
    * @param permits the number of permits per interval
@@ -272,7 +274,18 @@ public class LocksmithRateLimitTemplate {
       @NonNull RateType rateType) {
     RRateLimiter rateLimiter = redissonClient.getRateLimiter(fullKey);
 
-    if (initializedKeys.containsKey(fullKey)) {
+    RateLimitConfig newConfig = new RateLimitConfig(permits, interval.toMillis(), rateType);
+    RateLimitConfig existingConfig = initializedConfigs.get(fullKey);
+
+    if (existingConfig != null) {
+      if (!existingConfig.equals(newConfig)) {
+        LOG.warn(
+            "Rate limiter [{}] is configured with different settings in this JVM: "
+                + "existing={}, new={}. Using existing configuration.",
+            fullKey,
+            existingConfig,
+            newConfig);
+      }
       return rateLimiter;
     }
 
@@ -294,7 +307,7 @@ public class LocksmithRateLimitTemplate {
       LOG.debug("Rate limiter [{}] already exists, using existing configuration", fullKey);
     }
 
-    initializedKeys.put(fullKey, Boolean.TRUE);
+    initializedConfigs.put(fullKey, newConfig);
     return rateLimiter;
   }
 
