@@ -5,17 +5,18 @@ import org.jspecify.annotations.Nullable;
 /**
  * Functional interface for code to be executed within a rate limit.
  *
- * <p>This callback is used with {@link LocksmithRateLimitTemplate#executeWithRateLimit} to execute
- * code after acquiring a rate limit permit. The callback may throw any exception, which will be
- * propagated to the caller.
+ * <p>This callback is used with {@link LocksmithRateLimitTemplate#withKey} to execute code after
+ * acquiring a rate limit permit. The callback may throw any exception, which will be propagated to
+ * the caller.
  *
  * <p>Example usage:
  *
  * <pre>{@code
- * String result = rateLimitTemplate.executeWithRateLimit("api-call", () -> {
- *     // Code executed after permit acquisition
- *     return apiClient.call();
- * });
+ * String result = rateLimitTemplate.withKey("api-call")
+ *     .execute(() -> {
+ *         // Code executed after permit acquisition
+ *         return apiClient.call();
+ *     });
  * }</pre>
  *
  * @param <T> the type of result returned by the callback

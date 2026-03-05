@@ -20,6 +20,7 @@ public record RateLimitConfig(long permits, long intervalMs, @NonNull RateType r
     implements Serializable {
   @Serial private static final long serialVersionUID = 1L;
 
+  /** Validates that {@code rateType} is not null. */
   public RateLimitConfig {
     Objects.requireNonNull(rateType, "rateType must not be null");
   }
