@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.2] - 2026-03-05
+
+### Dependencies
+- Bump `org.redisson:redisson` from 4.2.0 to 4.3.0 (#50)
+- Bump `org.springframework.boot:spring-boot-dependencies` from 4.0.2 to 4.0.3 (#47)
+- Bump `org.apache.maven.plugins:maven-surefire-plugin` from 3.5.4 to 3.5.5 (#48)
+
+### CI
+- Bump `actions/upload-artifact` from 6 to 7 (#49)
+
 ## [3.0.1] - 2026-02-14
 
 ### Fixed
