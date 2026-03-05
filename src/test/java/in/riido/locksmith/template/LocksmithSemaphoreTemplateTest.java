@@ -3,7 +3,6 @@ package in.riido.locksmith.template;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -40,10 +39,6 @@ class LocksmithSemaphoreTemplateTest {
     template = new LocksmithSemaphoreTemplate(redissonClient, properties);
     semaphore = mock(RPermitExpirableSemaphore.class);
     metaBucket = mock(RBucket.class);
-    final var keys = redissonClient.getKeys();
-    if (keys != null && keys.count() > 0) {
-      keys.flushall();
-    }
   }
 
   private void setupSemaphore(String key) {
@@ -54,8 +49,8 @@ class LocksmithSemaphoreTemplateTest {
   }
 
   @Nested
-  @DisplayName("Simple tryAcquirePermit Tests")
-  class SimpleTryAcquirePermitTests {
+  @DisplayName("Builder tryAcquire Tests")
+  class BuilderTryAcquireTests {
 
     @Test
     @DisplayName("Should acquire permit immediately with default parameters")
@@ -63,52 +58,26 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String permitId = template.tryAcquirePermit("my-key", 5);
+      try (PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+        assertEquals("permit-123", handle.permitId());
+      }
 
-      assertEquals("permit-123", permitId);
       verify(semaphore).trySetPermits(5);
       verify(metaBucket).set(5);
     }
 
     @Test
-    @DisplayName("Should return null when permit not acquired")
-    void shouldReturnNullWhenPermitNotAcquired() throws InterruptedException {
+    @DisplayName("Should return not-acquired handle when permit not acquired")
+    void shouldReturnNotAcquiredHandle() throws InterruptedException {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(null);
 
-      String permitId = template.tryAcquirePermit("my-key", 5);
-
-      assertNull(permitId);
+      try (PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire()) {
+        assertFalse(handle.isAcquired());
+        assertNull(handle.permitId());
+      }
     }
-
-    @Test
-    @DisplayName("Should throw exception for non-positive permits")
-    void shouldThrowExceptionForNonPositivePermits() {
-      assertThrows(
-          SemaphoreConfigurationException.class, () -> template.tryAcquirePermit("my-key", 0));
-
-      assertThrows(
-          SemaphoreConfigurationException.class, () -> template.tryAcquirePermit("my-key", -1));
-    }
-
-    @Test
-    @DisplayName("Should return null when interrupted")
-    void shouldReturnNullWhenInterrupted() throws InterruptedException {
-      setupSemaphore("my-key");
-      when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
-          .thenThrow(new InterruptedException());
-
-      String permitId = template.tryAcquirePermit("my-key", 5);
-
-      assertNull(permitId);
-      assertTrue(Thread.currentThread().isInterrupted());
-      Thread.interrupted(); // Clear interrupt status
-    }
-  }
-
-  @Nested
-  @DisplayName("Builder tryAcquire Tests")
-  class BuilderTryAcquireTests {
 
     @Test
     @DisplayName("Should use custom wait time via builder")
@@ -116,9 +85,11 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(5000, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String permitId = template.forKey("my-key", 5).waitTime(Duration.ofSeconds(5)).tryAcquire();
+      try (PermitHandle handle =
+          template.withKey("my-key").permits(5).waitTime(Duration.ofSeconds(5)).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertEquals("permit-123", permitId);
       verify(semaphore).tryAcquire(5000, 300000, TimeUnit.MILLISECONDS);
     }
 
@@ -128,9 +99,11 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 60000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String permitId = template.forKey("my-key", 5).leaseTime(Duration.ofMinutes(1)).tryAcquire();
+      try (PermitHandle handle =
+          template.withKey("my-key").permits(5).leaseTime(Duration.ofMinutes(1)).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertEquals("permit-123", permitId);
       verify(semaphore).tryAcquire(0, 60000, TimeUnit.MILLISECONDS);
     }
 
@@ -140,15 +113,81 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(10000, 120000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String permitId =
+      try (PermitHandle handle =
           template
-              .forKey("my-key", 5)
+              .withKey("my-key")
+              .permits(5)
               .waitTime(Duration.ofSeconds(10))
               .leaseTime(Duration.ofMinutes(2))
-              .tryAcquire();
+              .tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertEquals("permit-123", permitId);
       verify(semaphore).tryAcquire(10000, 120000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should return not-acquired handle when interrupted")
+    void shouldReturnNotAcquiredWhenInterrupted() throws InterruptedException {
+      setupSemaphore("my-key");
+      when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
+          .thenThrow(new InterruptedException());
+
+      try (PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire()) {
+        assertFalse(handle.isAcquired());
+      }
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      Thread.interrupted(); // Clear interrupt status
+    }
+
+    @Test
+    @DisplayName("Should auto-release permit on handle close")
+    void shouldAutoReleasePermitOnClose() throws InterruptedException {
+      setupSemaphore("my-key");
+      when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
+
+      PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire();
+      assertTrue(handle.isAcquired());
+      handle.close();
+
+      verify(semaphore).release("permit-123");
+    }
+  }
+
+  @Nested
+  @DisplayName("Permit Validation Tests")
+  class PermitValidationTests {
+
+    @Test
+    @DisplayName("Should throw exception when permits not set")
+    void shouldThrowExceptionWhenPermitsNotSet() {
+      assertThrows(
+          SemaphoreConfigurationException.class, () -> template.withKey("my-key").tryAcquire());
+    }
+
+    @Test
+    @DisplayName("Should throw exception for non-positive permits")
+    void shouldThrowExceptionForNonPositivePermits() {
+      assertThrows(
+          SemaphoreConfigurationException.class,
+          () -> template.withKey("my-key").permits(0).tryAcquire());
+
+      assertThrows(
+          SemaphoreConfigurationException.class,
+          () -> template.withKey("my-key").permits(-1).tryAcquire());
+    }
+
+    @Test
+    @DisplayName("Should throw exception for non-positive permits in execute")
+    void shouldThrowExceptionForNonPositivePermitsInExecute() {
+      assertThrows(
+          SemaphoreConfigurationException.class,
+          () -> template.withKey("my-key").permits(0).execute(() -> "result"));
+
+      assertThrows(
+          SemaphoreConfigurationException.class,
+          () -> template.withKey("my-key").permits(-1).execute(() -> "result"));
     }
   }
 
@@ -172,7 +211,6 @@ class LocksmithSemaphoreTemplateTest {
       when(redissonClient.getPermitExpirableSemaphore("semaphore:my-key")).thenReturn(semaphore);
       doThrow(new IllegalArgumentException("Permit expired")).when(semaphore).release("permit-123");
 
-      // Should not throw
       assertDoesNotThrow(() -> template.releasePermit("my-key", "permit-123"));
     }
 
@@ -182,14 +220,13 @@ class LocksmithSemaphoreTemplateTest {
       when(redissonClient.getPermitExpirableSemaphore("semaphore:my-key")).thenReturn(semaphore);
       doThrow(new RuntimeException("Redis error")).when(semaphore).release("permit-123");
 
-      // Should not throw
       assertDoesNotThrow(() -> template.releasePermit("my-key", "permit-123"));
     }
   }
 
   @Nested
-  @DisplayName("Simple executeWithPermit Tests")
-  class SimpleExecuteWithPermitTests {
+  @DisplayName("Builder execute Tests")
+  class BuilderExecuteTests {
 
     @Test
     @DisplayName("Should execute callback when permit acquired")
@@ -197,7 +234,7 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String result = template.executeWithPermit("my-key", 5, () -> "result");
+      String result = template.withKey("my-key").permits(5).execute(() -> "result");
 
       assertEquals("result", result);
       verify(semaphore).release("permit-123");
@@ -209,7 +246,7 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn(null);
 
-      String result = template.executeWithPermit("my-key", 5, () -> "result");
+      String result = template.withKey("my-key").permits(5).execute(() -> "result");
 
       assertNull(result);
       verify(semaphore, never()).release(anyString());
@@ -224,58 +261,16 @@ class LocksmithSemaphoreTemplateTest {
       assertThrows(
           RuntimeException.class,
           () ->
-              template.executeWithPermit(
-                  "my-key",
-                  5,
-                  () -> {
-                    throw new RuntimeException("Test error");
-                  }));
+              template
+                  .withKey("my-key")
+                  .permits(5)
+                  .execute(
+                      () -> {
+                        throw new RuntimeException("Test error");
+                      }));
 
       verify(semaphore).release("permit-123");
     }
-
-    @Test
-    @DisplayName("Should throw exception for non-positive permits in executeWithPermit")
-    void shouldThrowExceptionForNonPositivePermitsInExecuteWithPermit() {
-      assertThrows(
-          SemaphoreConfigurationException.class,
-          () -> template.executeWithPermit("my-key", 0, () -> "result"));
-
-      assertThrows(
-          SemaphoreConfigurationException.class,
-          () -> template.executeWithPermit("my-key", -1, () -> "result"));
-    }
-
-    @Test
-    @DisplayName("Should return null when interrupted")
-    void shouldReturnNullWhenInterrupted() throws Exception {
-      setupSemaphore("my-key");
-      when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
-          .thenThrow(new InterruptedException());
-
-      String result = template.executeWithPermit("my-key", 5, () -> "result");
-
-      assertNull(result);
-      assertTrue(Thread.currentThread().isInterrupted());
-      Thread.interrupted(); // Clear interrupt status
-    }
-
-    @Test
-    @DisplayName("Should handle IllegalArgumentException during release in executeWithPermit")
-    void shouldHandleIllegalArgumentExceptionInExecuteWithPermit() throws Exception {
-      setupSemaphore("my-key");
-      when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
-      doThrow(new IllegalArgumentException("Expired")).when(semaphore).release("permit-123");
-
-      String result = template.executeWithPermit("my-key", 5, () -> "result");
-
-      assertEquals("result", result);
-    }
-  }
-
-  @Nested
-  @DisplayName("Builder execute Tests")
-  class BuilderExecuteTests {
 
     @Test
     @DisplayName("Should use custom wait time in execute via builder")
@@ -283,7 +278,7 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(5000, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      template.forKey("my-key", 5).waitTime(Duration.ofSeconds(5)).execute(() -> "result");
+      template.withKey("my-key").permits(5).waitTime(Duration.ofSeconds(5)).execute(() -> "result");
 
       verify(semaphore).tryAcquire(5000, 300000, TimeUnit.MILLISECONDS);
     }
@@ -294,9 +289,39 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 60000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      template.forKey("my-key", 5).leaseTime(Duration.ofMinutes(1)).execute(() -> "result");
+      template
+          .withKey("my-key")
+          .permits(5)
+          .leaseTime(Duration.ofMinutes(1))
+          .execute(() -> "result");
 
       verify(semaphore).tryAcquire(0, 60000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should return null when interrupted")
+    void shouldReturnNullWhenInterrupted() throws Exception {
+      setupSemaphore("my-key");
+      when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
+          .thenThrow(new InterruptedException());
+
+      String result = template.withKey("my-key").permits(5).execute(() -> "result");
+
+      assertNull(result);
+      assertTrue(Thread.currentThread().isInterrupted());
+      Thread.interrupted(); // Clear interrupt status
+    }
+
+    @Test
+    @DisplayName("Should handle IllegalArgumentException during release in execute")
+    void shouldHandleIllegalArgumentExceptionInExecute() throws Exception {
+      setupSemaphore("my-key");
+      when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
+      doThrow(new IllegalArgumentException("Expired")).when(semaphore).release("permit-123");
+
+      String result = template.withKey("my-key").permits(5).execute(() -> "result");
+
+      assertEquals("result", result);
     }
   }
 
@@ -310,7 +335,9 @@ class LocksmithSemaphoreTemplateTest {
       setupSemaphore("my-key");
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      template.tryAcquirePermit("my-key", 5);
+      try (PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
 
       verify(semaphore).trySetPermits(5);
       verify(metaBucket).set(5);
@@ -323,8 +350,8 @@ class LocksmithSemaphoreTemplateTest {
       when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
           .thenReturn("permit-123");
 
-      template.tryAcquirePermit("my-key", 5);
-      template.tryAcquirePermit("my-key", 5);
+      template.withKey("my-key").permits(5).tryAcquire().close();
+      template.withKey("my-key").permits(5).tryAcquire().close();
 
       verify(semaphore, times(1)).trySetPermits(5);
     }
@@ -337,7 +364,7 @@ class LocksmithSemaphoreTemplateTest {
       when(metaBucket.get()).thenReturn(10); // Existing value
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      template.tryAcquirePermit("my-key", 5);
+      template.withKey("my-key").permits(5).tryAcquire().close();
 
       verify(semaphore, never()).trySetPermits(anyInt());
     }
@@ -350,9 +377,10 @@ class LocksmithSemaphoreTemplateTest {
       when(metaBucket.get()).thenReturn(10); // Different from requested 5
       when(semaphore.tryAcquire(0, 300000, TimeUnit.MILLISECONDS)).thenReturn("permit-123");
 
-      String permitId = template.tryAcquirePermit("my-key", 5);
+      try (PermitHandle handle = template.withKey("my-key").permits(5).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertNotNull(permitId);
       verify(semaphore, never()).trySetPermits(anyInt());
     }
   }
@@ -368,7 +396,7 @@ class LocksmithSemaphoreTemplateTest {
       when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
           .thenReturn("permit-123");
 
-      template.tryAcquirePermit("custom-key", 5);
+      template.withKey("custom-key").permits(5).tryAcquire().close();
 
       verify(redissonClient, atLeastOnce()).getPermitExpirableSemaphore("semaphore:custom-key");
     }
@@ -392,7 +420,7 @@ class LocksmithSemaphoreTemplateTest {
       when(semaphore.tryAcquire(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
           .thenReturn("permit-123");
 
-      customTemplate.tryAcquirePermit("custom-key", 5);
+      customTemplate.withKey("custom-key").permits(5).tryAcquire().close();
 
       verify(redissonClient, atLeastOnce()).getPermitExpirableSemaphore("myapp:custom-key");
     }

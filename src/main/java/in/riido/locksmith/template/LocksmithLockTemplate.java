@@ -16,53 +16,54 @@ import org.slf4j.LoggerFactory;
 /**
  * Template class for programmatic distributed lock operations.
  *
- * <p>This class provides a programmatic API for distributed locks, complementing the
+ * <p>This class provides a builder-based programmatic API for distributed locks, complementing the
  * annotation-based approach provided by {@link in.riido.locksmith.DistributedLock}. Use this when
  * you need more control over lock acquisition and release, or when annotations are not suitable.
  *
  * <p>All methods apply the configured key prefix automatically. For example, if the key prefix is
- * "lock:" and you call {@code tryLock("my-key")}, the actual Redis key will be "lock:my-key".
+ * "lock:" and you use {@code withKey("my-key")}, the actual Redis key will be "lock:my-key".
  *
- * <h2>Simple Usage</h2>
+ * <h2>Try-with-resources (recommended)</h2>
  *
  * <pre>{@code
- * // Acquire and release
- * if (lockTemplate.tryLock("my-key")) {
- *     try {
- *         // Critical section
- *     } finally {
- *         lockTemplate.unlock("my-key");
+ * try (LockHandle handle = lockTemplate.withKey("my-key").tryLock()) {
+ *     if (handle.isAcquired()) {
+ *         // Critical section - lock auto-released on close
+ *     }
+ * }
+ * }</pre>
+ *
+ * <h2>Callback-based</h2>
+ *
+ * <pre>{@code
+ * String result = lockTemplate.withKey("my-key")
+ *     .waitTime(Duration.ofSeconds(5))
+ *     .execute(() -> "executed");
+ * }</pre>
+ *
+ * <h2>Builder with custom configuration</h2>
+ *
+ * <pre>{@code
+ * try (LockHandle handle = lockTemplate.withKey("my-key")
+ *         .waitTime(Duration.ofSeconds(5))
+ *         .leaseTime(Duration.ofMinutes(2))
+ *         .lockType(LockType.WRITE)
+ *         .tryLock()) {
+ *     if (handle.isAcquired()) {
+ *         // work
  *     }
  * }
  *
- * // Callback-based (recommended)
- * String result = lockTemplate.executeWithLock("my-key", () -> {
- *     return "executed";
- * });
- * }</pre>
- *
- * <h2>Builder for Complex Cases</h2>
- *
- * <pre>{@code
- * // With custom timing and lock type
- * boolean acquired = lockTemplate.forKey("my-key")
- *     .waitTime(Duration.ofSeconds(5))
- *     .leaseTime(Duration.ofMinutes(2))
- *     .lockType(LockType.WRITE)
- *     .tryLock();
- *
  * // With auto-renew
- * String result = lockTemplate.forKey("my-key")
+ * String result = lockTemplate.withKey("my-key")
  *     .autoRenew()
- *     .execute(() -> {
- *         // Long-running operation
- *         return "done";
- *     });
+ *     .execute(() -> longRunningOperation());
  * }</pre>
  *
  * @author Garvit Joshi
  * @since 2.1.0
  * @see LockCallback
+ * @see LockHandle
  * @see LockOperationBuilder
  * @see in.riido.locksmith.DistributedLock
  */
@@ -101,25 +102,43 @@ public class LocksmithLockTemplate {
     this.lockMetrics = lockMetrics;
   }
 
-  // ========== Simple Methods ==========
+  // ========== Builder Entry Point ==========
 
   /**
-   * Tries to acquire a reentrant lock immediately without waiting.
+   * Creates a builder for lock operations on the specified key.
    *
-   * <p>Uses the default lease time from configuration. For more control, use {@link
-   * #forKey(String)}.
+   * <pre>{@code
+   * // Try-with-resources
+   * try (LockHandle handle = lockTemplate.withKey("my-key")
+   *         .waitTime(Duration.ofSeconds(5))
+   *         .lockType(LockType.WRITE)
+   *         .tryLock()) {
+   *     if (handle.isAcquired()) {
+   *         // Critical section
+   *     }
+   * }
+   *
+   * // Callback-based
+   * String result = lockTemplate.withKey("my-key")
+   *     .autoRenew()
+   *     .execute(() -> doWork());
+   * }</pre>
    *
    * @param key the lock key (prefix will be applied automatically)
-   * @return true if the lock was acquired, false otherwise
+   * @return a builder for configuring and executing lock operations
    */
-  public boolean tryLock(@NonNull String key) {
-    return doTryLock(key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT, true);
+  @NonNull
+  public LockOperationBuilder withKey(@NonNull String key) {
+    return new LockOperationBuilder(key);
   }
+
+  // ========== Standalone Operations ==========
 
   /**
    * Releases a reentrant lock.
    *
-   * <p>For other lock types, use {@link #forKey(String)}.
+   * <p>Prefer using {@link LockHandle} with try-with-resources for automatic release. This method
+   * is provided for cases where manual release is needed.
    *
    * @param key the lock key (prefix will be applied automatically)
    */
@@ -128,9 +147,20 @@ public class LocksmithLockTemplate {
   }
 
   /**
-   * Checks if a reentrant lock is currently held by any thread/instance.
+   * Releases a lock of the specified type.
    *
-   * <p>For other lock types, use {@link #forKey(String)}.
+   * <p>Prefer using {@link LockHandle} with try-with-resources for automatic release. This method
+   * is provided for cases where manual release is needed.
+   *
+   * @param key the lock key (prefix will be applied automatically)
+   * @param lockType the type of lock to release
+   */
+  public void unlock(@NonNull String key, @NonNull LockType lockType) {
+    doUnlock(key, lockType);
+  }
+
+  /**
+   * Checks if a reentrant lock is currently held by any thread/instance.
    *
    * @param key the lock key (prefix will be applied automatically)
    * @return true if the lock is held by anyone, false otherwise
@@ -140,57 +170,20 @@ public class LocksmithLockTemplate {
   }
 
   /**
-   * Executes a callback while holding a reentrant lock.
-   *
-   * <p>Tries to acquire the lock immediately without waiting. Uses the default lease time from
-   * configuration. For more control, use {@link #forKey(String)}.
-   *
-   * @param <T> the type of result returned by the callback
-   * @param key the lock key (prefix will be applied automatically)
-   * @param callback the callback to execute while holding the lock
-   * @return the result of the callback, or null if the lock could not be acquired
-   * @throws Exception if the callback throws an exception
-   */
-  @Nullable
-  public <T> T executeWithLock(@NonNull String key, @NonNull LockCallback<T> callback)
-      throws Exception {
-    return doExecuteWithLock(
-        key, Duration.ZERO, lockProperties.leaseTime(), LockType.REENTRANT, true, callback);
-  }
-
-  // ========== Builder Entry Point ==========
-
-  /**
-   * Creates a builder for lock operations on the specified key.
-   *
-   * <p>Use the builder when you need to customize wait time, lease time, lock type, or enable
-   * auto-renew.
-   *
-   * <pre>{@code
-   * // Custom timing
-   * lockTemplate.forKey("my-key")
-   *     .waitTime(Duration.ofSeconds(5))
-   *     .leaseTime(Duration.ofMinutes(2))
-   *     .tryLock();
-   *
-   * // Auto-renew with write lock
-   * lockTemplate.forKey("my-key")
-   *     .lockType(LockType.WRITE)
-   *     .autoRenew()
-   *     .execute(() -> doWork());
-   * }</pre>
+   * Checks if a lock of the specified type is currently held by any thread/instance.
    *
    * @param key the lock key (prefix will be applied automatically)
-   * @return a builder for configuring and executing lock operations
+   * @param lockType the type of lock to check
+   * @return true if the lock is held by anyone, false otherwise
    */
-  @NonNull
-  public LockOperationBuilder forKey(@NonNull String key) {
-    return new LockOperationBuilder(key);
+  public boolean isLocked(@NonNull String key, @NonNull LockType lockType) {
+    return doIsLocked(key, lockType);
   }
 
   // ========== Internal Methods ==========
 
-  private boolean doTryLock(
+  @NonNull
+  private LockHandle doTryLock(
       @NonNull String key,
       @NonNull Duration waitTime,
       @NonNull Duration leaseTime,
@@ -209,14 +202,15 @@ public class LocksmithLockTemplate {
           lockMetrics.recordAcquired();
         }
         LOG.debug("Lock [{}] acquired with type={}", fullKey, lockType);
+        return LockHandle.acquired(lock, fullKey, lockMetrics);
       } else {
         if (lockMetrics != null) {
           String reason = immediateMode ? "immediate" : "timeout";
           lockMetrics.recordSkipped(reason);
         }
         LOG.debug("Failed to acquire lock [{}] with type={}", fullKey, lockType);
+        return LockHandle.notAcquired();
       }
-      return acquired;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       if (lockMetrics != null) {
@@ -224,7 +218,27 @@ public class LocksmithLockTemplate {
         lockMetrics.recordSkipped(reason);
       }
       LOG.warn("Thread interrupted while waiting for lock [{}]", fullKey);
-      return false;
+      return LockHandle.notAcquired();
+    }
+  }
+
+  @Nullable
+  private <T> T doExecuteWithLock(
+      @NonNull String key,
+      @NonNull Duration waitTime,
+      @NonNull Duration leaseTime,
+      @NonNull LockType lockType,
+      boolean immediateMode,
+      @NonNull LockCallback<T> callback)
+      throws Exception {
+    try (LockHandle handle = doTryLock(key, waitTime, leaseTime, lockType, immediateMode)) {
+      if (!handle.isAcquired()) {
+        LOG.debug(
+            "Failed to acquire lock [{}] for callback execution", lockProperties.keyPrefix() + key);
+        return null;
+      }
+      LOG.debug("Lock [{}] acquired for callback execution", lockProperties.keyPrefix() + key);
+      return callback.execute();
     }
   }
 
@@ -240,6 +254,8 @@ public class LocksmithLockTemplate {
           "Failed to unlock [{}] - lock not held by current thread or already released: {}",
           fullKey,
           e.getMessage());
+    } catch (Exception e) {
+      LOG.warn("Failed to release lock [{}]", fullKey, e);
     }
   }
 
@@ -247,71 +263,6 @@ public class LocksmithLockTemplate {
     String fullKey = lockProperties.keyPrefix() + key;
     RLock lock = getLock(fullKey, lockType);
     return lock.isLocked();
-  }
-
-  @Nullable
-  private <T> T doExecuteWithLock(
-      @NonNull String key,
-      @NonNull Duration waitTime,
-      @NonNull Duration leaseTime,
-      @NonNull LockType lockType,
-      boolean immediateMode,
-      @NonNull LockCallback<T> callback)
-      throws Exception {
-    String fullKey = lockProperties.keyPrefix() + key;
-    RLock lock = getLock(fullKey, lockType);
-    long acquisitionStartTime = System.currentTimeMillis();
-
-    boolean acquired = false;
-    try {
-      acquired = lock.tryLock(waitTime.toMillis(), leaseTime.toMillis(), TimeUnit.MILLISECONDS);
-
-      if (!acquired) {
-        if (lockMetrics != null) {
-          String reason = immediateMode ? "immediate" : "timeout";
-          lockMetrics.recordSkipped(reason);
-        }
-        LOG.debug("Failed to acquire lock [{}] for callback execution", fullKey);
-        return null;
-      }
-
-      if (lockMetrics != null) {
-        lockMetrics.recordAcquisitionTime(System.currentTimeMillis() - acquisitionStartTime);
-        lockMetrics.recordAcquired();
-      }
-
-      LOG.debug("Lock [{}] acquired for callback execution", fullKey);
-      long heldStartTime = System.currentTimeMillis();
-      T result = callback.execute();
-      if (lockMetrics != null) {
-        lockMetrics.recordHeldTime(System.currentTimeMillis() - heldStartTime);
-      }
-      return result;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      if (acquired) {
-        // InterruptedException came from callback.execute() (user's code), not from
-        // lock acquisition. Propagate the original exception instead of swallowing it.
-        throw e;
-      }
-      // Lock acquisition was interrupted
-      if (lockMetrics != null) {
-        String reason = immediateMode ? "immediate" : "timeout";
-        lockMetrics.recordSkipped(reason);
-      }
-      LOG.warn("Thread interrupted while waiting for lock [{}]", fullKey);
-      return null;
-    } finally {
-      if (acquired) {
-        try {
-          lock.unlock();
-          LOG.debug("Lock [{}] released after callback execution", fullKey);
-        } catch (IllegalMonitorStateException e) {
-          LOG.warn(
-              "Lock [{}] was already released (possibly expired): {}", fullKey, e.getMessage());
-        }
-      }
-    }
   }
 
   @NonNull
@@ -329,25 +280,26 @@ public class LocksmithLockTemplate {
    * Builder for configuring and executing lock operations.
    *
    * <p>This builder provides a fluent API for lock operations with custom configuration. Use {@link
-   * LocksmithLockTemplate#forKey(String)} to create an instance.
+   * LocksmithLockTemplate#withKey(String)} to create an instance.
    *
    * <p>Example usage:
    *
    * <pre>{@code
-   * // Acquire with custom timing
-   * boolean acquired = lockTemplate.forKey("my-key")
-   *     .waitTime(Duration.ofSeconds(5))
-   *     .leaseTime(Duration.ofMinutes(2))
-   *     .tryLock();
+   * // Try-with-resources
+   * try (LockHandle handle = lockTemplate.withKey("my-key")
+   *         .waitTime(Duration.ofSeconds(5))
+   *         .leaseTime(Duration.ofMinutes(2))
+   *         .tryLock()) {
+   *     if (handle.isAcquired()) {
+   *         // Critical section
+   *     }
+   * }
    *
-   * // Execute with auto-renew and write lock
-   * String result = lockTemplate.forKey("my-key")
+   * // Callback with auto-renew and write lock
+   * String result = lockTemplate.withKey("my-key")
    *     .lockType(LockType.WRITE)
    *     .autoRenew()
-   *     .execute(() -> {
-   *         // Long-running operation
-   *         return "done";
-   *     });
+   *     .execute(() -> longRunningOperation());
    * }</pre>
    *
    * @since 2.1.0
@@ -438,31 +390,15 @@ public class LocksmithLockTemplate {
     /**
      * Tries to acquire the lock with the configured settings.
      *
-     * @return true if the lock was acquired, false otherwise
+     * <p>Returns a {@link LockHandle} that implements {@link AutoCloseable} for use with
+     * try-with-resources. The lock is automatically released when the handle is closed.
+     *
+     * @return a handle representing the acquisition result
      */
-    public boolean tryLock() {
+    @NonNull
+    public LockHandle tryLock() {
       boolean immediateMode = waitTime.isZero();
       return doTryLock(key, waitTime, leaseTime, lockType, immediateMode);
-    }
-
-    /**
-     * Releases the lock with the configured lock type.
-     *
-     * <p>Note: Only the lock type setting affects this operation.
-     */
-    public void unlock() {
-      doUnlock(key, lockType);
-    }
-
-    /**
-     * Checks if the lock is currently held by any thread/instance.
-     *
-     * <p>Note: Only the lock type setting affects this operation.
-     *
-     * @return true if the lock is held by anyone, false otherwise
-     */
-    public boolean isLocked() {
-      return doIsLocked(key, lockType);
     }
 
     /**

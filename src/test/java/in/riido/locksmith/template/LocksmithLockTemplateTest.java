@@ -36,53 +36,6 @@ class LocksmithLockTemplateTest {
             null);
     template = new LocksmithLockTemplate(redissonClient, properties);
     lock = mock(RLock.class);
-    final var keys = redissonClient.getKeys();
-    if (keys != null && keys.count() > 0) {
-      keys.flushall();
-    }
-  }
-
-  @Nested
-  @DisplayName("Simple tryLock Tests")
-  class SimpleTryLockTests {
-
-    @Test
-    @DisplayName("Should acquire lock immediately with default parameters")
-    void shouldAcquireLockImmediately() throws InterruptedException {
-      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
-      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
-
-      boolean result = template.tryLock("my-key");
-
-      assertTrue(result);
-      verify(redissonClient).getLock("lock:my-key");
-      verify(lock).tryLock(0, 600000, TimeUnit.MILLISECONDS);
-    }
-
-    @Test
-    @DisplayName("Should return false when lock not acquired")
-    void shouldReturnFalseWhenLockNotAcquired() throws InterruptedException {
-      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
-      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
-
-      boolean result = template.tryLock("my-key");
-
-      assertFalse(result);
-    }
-
-    @Test
-    @DisplayName("Should return false when interrupted")
-    void shouldReturnFalseWhenInterrupted() throws InterruptedException {
-      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
-      when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
-          .thenThrow(new InterruptedException());
-
-      boolean result = template.tryLock("my-key");
-
-      assertFalse(result);
-      assertTrue(Thread.currentThread().isInterrupted());
-      Thread.interrupted(); // Clear interrupt status
-    }
   }
 
   @Nested
@@ -90,14 +43,43 @@ class LocksmithLockTemplateTest {
   class BuilderTryLockTests {
 
     @Test
+    @DisplayName("Should acquire lock immediately with default parameters")
+    void shouldAcquireLockImmediately() throws InterruptedException {
+      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
+
+      try (LockHandle handle = template.withKey("my-key").tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
+
+      verify(redissonClient).getLock("lock:my-key");
+      verify(lock).tryLock(0, 600000, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should return not-acquired handle when lock not acquired")
+    void shouldReturnNotAcquiredHandle() throws InterruptedException {
+      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
+
+      try (LockHandle handle = template.withKey("my-key").tryLock()) {
+        assertFalse(handle.isAcquired());
+      }
+
+      verify(lock, never()).unlock();
+    }
+
+    @Test
     @DisplayName("Should use custom wait time via builder")
     void shouldUseCustomWaitTime() throws InterruptedException {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(5000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result = template.forKey("my-key").waitTime(Duration.ofSeconds(5)).tryLock();
+      try (LockHandle handle =
+          template.withKey("my-key").waitTime(Duration.ofSeconds(5)).tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(lock).tryLock(5000, 600000, TimeUnit.MILLISECONDS);
     }
 
@@ -107,14 +89,15 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(5000, 30000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result =
+      try (LockHandle handle =
           template
-              .forKey("my-key")
+              .withKey("my-key")
               .waitTime(Duration.ofSeconds(5))
               .leaseTime(Duration.ofSeconds(30))
-              .tryLock();
+              .tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(lock).tryLock(5000, 30000, TimeUnit.MILLISECONDS);
     }
 
@@ -124,10 +107,39 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result = template.forKey("my-key").autoRenew().tryLock();
+      try (LockHandle handle = template.withKey("my-key").autoRenew().tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(lock).tryLock(0, -1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should return not-acquired handle when interrupted")
+    void shouldReturnNotAcquiredWhenInterrupted() throws InterruptedException {
+      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
+      when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
+          .thenThrow(new InterruptedException());
+
+      try (LockHandle handle = template.withKey("my-key").tryLock()) {
+        assertFalse(handle.isAcquired());
+      }
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      Thread.interrupted(); // Clear interrupt status
+    }
+
+    @Test
+    @DisplayName("Should auto-release lock on handle close")
+    void shouldAutoReleaseLockOnClose() throws InterruptedException {
+      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
+
+      LockHandle handle = template.withKey("my-key").tryLock();
+      assertTrue(handle.isAcquired());
+      handle.close();
+
+      verify(lock).unlock();
     }
   }
 
@@ -154,9 +166,10 @@ class LocksmithLockTemplateTest {
     void shouldUseReadLockForReadType() throws InterruptedException {
       when(readLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result = template.forKey("my-key").lockType(LockType.READ).tryLock();
+      try (LockHandle handle = template.withKey("my-key").lockType(LockType.READ).tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(readWriteLock).readLock();
       verify(readWriteLock, never()).writeLock();
     }
@@ -166,9 +179,10 @@ class LocksmithLockTemplateTest {
     void shouldUseWriteLockForWriteType() throws InterruptedException {
       when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result = template.forKey("my-key").lockType(LockType.WRITE).tryLock();
+      try (LockHandle handle = template.withKey("my-key").lockType(LockType.WRITE).tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(readWriteLock).writeLock();
       verify(readWriteLock, never()).readLock();
     }
@@ -179,9 +193,10 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      boolean result = template.forKey("my-key").lockType(LockType.REENTRANT).tryLock();
+      try (LockHandle handle = template.withKey("my-key").lockType(LockType.REENTRANT).tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
-      assertTrue(result);
       verify(redissonClient).getLock("lock:my-key");
       verify(redissonClient, never()).getReadWriteLock(anyString());
     }
@@ -192,7 +207,7 @@ class LocksmithLockTemplateTest {
   class UnlockTests {
 
     @Test
-    @DisplayName("Should unlock reentrant lock via simple method")
+    @DisplayName("Should unlock reentrant lock via standalone method")
     void shouldUnlockReentrantLock() {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
 
@@ -202,27 +217,27 @@ class LocksmithLockTemplateTest {
     }
 
     @Test
-    @DisplayName("Should unlock read lock via builder")
+    @DisplayName("Should unlock read lock via standalone method with type")
     void shouldUnlockReadLock() {
       RReadWriteLock readWriteLock = mock(RReadWriteLock.class);
       RLock readLock = mock(RLock.class);
       when(redissonClient.getReadWriteLock("lock:my-key")).thenReturn(readWriteLock);
       when(readWriteLock.readLock()).thenReturn(readLock);
 
-      template.forKey("my-key").lockType(LockType.READ).unlock();
+      template.unlock("my-key", LockType.READ);
 
       verify(readLock).unlock();
     }
 
     @Test
-    @DisplayName("Should unlock write lock via builder")
+    @DisplayName("Should unlock write lock via standalone method with type")
     void shouldUnlockWriteLock() {
       RReadWriteLock readWriteLock = mock(RReadWriteLock.class);
       RLock writeLock = mock(RLock.class);
       when(redissonClient.getReadWriteLock("lock:my-key")).thenReturn(readWriteLock);
       when(readWriteLock.writeLock()).thenReturn(writeLock);
 
-      template.forKey("my-key").lockType(LockType.WRITE).unlock();
+      template.unlock("my-key", LockType.WRITE);
 
       verify(writeLock).unlock();
     }
@@ -260,7 +275,7 @@ class LocksmithLockTemplateTest {
     }
 
     @Test
-    @DisplayName("Should check correct lock type via builder")
+    @DisplayName("Should check correct lock type via standalone method")
     void shouldCheckCorrectLockType() {
       RReadWriteLock readWriteLock = mock(RReadWriteLock.class);
       RLock writeLock = mock(RLock.class);
@@ -268,14 +283,14 @@ class LocksmithLockTemplateTest {
       when(readWriteLock.writeLock()).thenReturn(writeLock);
       when(writeLock.isLocked()).thenReturn(true);
 
-      assertTrue(template.forKey("my-key").lockType(LockType.WRITE).isLocked());
+      assertTrue(template.isLocked("my-key", LockType.WRITE));
       verify(readWriteLock).writeLock();
     }
   }
 
   @Nested
-  @DisplayName("Simple executeWithLock Tests")
-  class SimpleExecuteWithLockTests {
+  @DisplayName("Builder execute Tests")
+  class BuilderExecuteTests {
 
     @Test
     @DisplayName("Should execute callback when lock acquired")
@@ -283,7 +298,7 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      String result = template.executeWithLock("my-key", () -> "result");
+      String result = template.withKey("my-key").execute(() -> "result");
 
       assertEquals("result", result);
       verify(lock).unlock();
@@ -295,7 +310,7 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(false);
 
-      String result = template.executeWithLock("my-key", () -> "result");
+      String result = template.withKey("my-key").execute(() -> "result");
 
       assertNull(result);
       verify(lock, never()).unlock();
@@ -310,11 +325,12 @@ class LocksmithLockTemplateTest {
       assertThrows(
           RuntimeException.class,
           () ->
-              template.executeWithLock(
-                  "my-key",
-                  () -> {
-                    throw new RuntimeException("Test error");
-                  }));
+              template
+                  .withKey("my-key")
+                  .execute(
+                      () -> {
+                        throw new RuntimeException("Test error");
+                      }));
 
       verify(lock).unlock();
     }
@@ -326,7 +342,7 @@ class LocksmithLockTemplateTest {
       when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS)))
           .thenThrow(new InterruptedException());
 
-      String result = template.executeWithLock("my-key", () -> "result");
+      String result = template.withKey("my-key").execute(() -> "result");
 
       assertNull(result);
       assertTrue(Thread.currentThread().isInterrupted());
@@ -334,29 +350,12 @@ class LocksmithLockTemplateTest {
     }
 
     @Test
-    @DisplayName("Should handle IllegalMonitorStateException during unlock")
-    void shouldHandleIllegalMonitorStateExceptionInExecuteWithLock() throws Exception {
-      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
-      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
-      doThrow(new IllegalMonitorStateException("Expired")).when(lock).unlock();
-
-      String result = template.executeWithLock("my-key", () -> "result");
-
-      assertEquals("result", result);
-    }
-  }
-
-  @Nested
-  @DisplayName("Builder execute Tests")
-  class BuilderExecuteTests {
-
-    @Test
     @DisplayName("Should use custom wait time in execute via builder")
     void shouldUseCustomWaitTimeInExecute() throws Exception {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(5000, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      template.forKey("my-key").waitTime(Duration.ofSeconds(5)).execute(() -> "result");
+      template.withKey("my-key").waitTime(Duration.ofSeconds(5)).execute(() -> "result");
 
       verify(lock).tryLock(5000, 600000, TimeUnit.MILLISECONDS);
     }
@@ -367,7 +366,7 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, 30000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      template.forKey("my-key").leaseTime(Duration.ofSeconds(30)).execute(() -> "result");
+      template.withKey("my-key").leaseTime(Duration.ofSeconds(30)).execute(() -> "result");
 
       verify(lock).tryLock(0, 30000, TimeUnit.MILLISECONDS);
     }
@@ -381,7 +380,7 @@ class LocksmithLockTemplateTest {
       when(readWriteLock.writeLock()).thenReturn(writeLock);
       when(writeLock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      template.forKey("my-key").lockType(LockType.WRITE).execute(() -> "result");
+      template.withKey("my-key").lockType(LockType.WRITE).execute(() -> "result");
 
       verify(readWriteLock).writeLock();
       verify(writeLock).unlock();
@@ -393,9 +392,21 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
       when(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)).thenReturn(true);
 
-      template.forKey("my-key").autoRenew().execute(() -> "result");
+      template.withKey("my-key").autoRenew().execute(() -> "result");
 
       verify(lock).tryLock(0, -1, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("Should handle IllegalMonitorStateException during unlock")
+    void shouldHandleIllegalMonitorStateExceptionInExecute() throws Exception {
+      when(redissonClient.getLock("lock:my-key")).thenReturn(lock);
+      when(lock.tryLock(0, 600000, TimeUnit.MILLISECONDS)).thenReturn(true);
+      doThrow(new IllegalMonitorStateException("Expired")).when(lock).unlock();
+
+      String result = template.withKey("my-key").execute(() -> "result");
+
+      assertEquals("result", result);
     }
   }
 
@@ -409,7 +420,9 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("lock:custom-key")).thenReturn(lock);
       when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
 
-      template.tryLock("custom-key");
+      try (LockHandle handle = template.withKey("custom-key").tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
       verify(redissonClient).getLock("lock:custom-key");
     }
@@ -429,7 +442,9 @@ class LocksmithLockTemplateTest {
       when(redissonClient.getLock("myapp:custom-key")).thenReturn(lock);
       when(lock.tryLock(anyLong(), anyLong(), eq(TimeUnit.MILLISECONDS))).thenReturn(true);
 
-      customTemplate.tryLock("custom-key");
+      try (LockHandle handle = customTemplate.withKey("custom-key").tryLock()) {
+        assertTrue(handle.isAcquired());
+      }
 
       verify(redissonClient).getLock("myapp:custom-key");
     }
