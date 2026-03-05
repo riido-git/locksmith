@@ -5,16 +5,15 @@ import in.riido.locksmith.RateLimit;
 import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
+import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.handler.RateLimitSkipHandler;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.models.RateLimitContext;
 import in.riido.locksmith.support.DurationResolver;
+import in.riido.locksmith.support.RateLimitConfig;
 import in.riido.locksmith.support.SpELKeyResolver;
-import java.io.Serial;
-import java.io.Serializable;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -121,10 +120,11 @@ public class RateLimitAspect {
 
     // Validate permits is positive
     if (annotation.permits() <= 0) {
-      throw new IllegalArgumentException(
+      throw new RateLimitConfigurationException(
           String.format(
               "RateLimit permits must be positive on method [%s], got: %d",
-              methodName, annotation.permits()));
+              methodName, annotation.permits()),
+          annotation.key());
     }
 
     final String resolvedKey = SpELKeyResolver.resolve(annotation.key(), joinPoint);
@@ -138,9 +138,10 @@ public class RateLimitAspect {
 
     // Validate interval is positive
     if (interval.isZero() || interval.isNegative()) {
-      throw new IllegalArgumentException(
+      throw new RateLimitConfigurationException(
           String.format(
-              "RateLimit interval must be positive on method [%s], got: %s", methodName, interval));
+              "RateLimit interval must be positive on method [%s], got: %s", methodName, interval),
+          annotation.key());
     }
 
     final Duration waitTime =
@@ -178,7 +179,7 @@ public class RateLimitAspect {
             methodName,
             annotation.skipHandler().getSimpleName());
       } else {
-        LOG.info("Rate limit exceeded for [{}] - method [{}] skipped", rateLimitKey, methodName);
+        LOG.info("Skipping execution of [{}] - rate limit [{}] exceeded", methodName, rateLimitKey);
       }
       return handleSkip(annotation, joinPoint, rateLimitKey, methodName);
     }
@@ -188,9 +189,7 @@ public class RateLimitAspect {
       rateLimitMetrics.recordAcquired();
     }
 
-    if (debugMode) {
-      LOG.info("Rate limit permit acquired for [{}] in [{}]", rateLimitKey, methodName);
-    }
+    LOG.info("Rate limit permit acquired for [{}] in [{}]", rateLimitKey, methodName);
 
     final long startTime = System.currentTimeMillis();
     try {
@@ -207,10 +206,14 @@ public class RateLimitAspect {
       }
 
       return result;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw e;
     } finally {
       if (rateLimitMetrics != null) {
         rateLimitMetrics.recordExecutionTime(System.currentTimeMillis() - startTime);
       }
+      LOG.info("Rate limit execution completed for [{}] in [{}]", rateLimitKey, methodName);
     }
   }
 
@@ -418,32 +421,5 @@ public class RateLimitAspect {
             joinPoint.getArgs(),
             signature.getReturnType());
     return handler.handle(context);
-  }
-
-  /**
-   * Configuration record for metadata storage. Must be serializable for Redis storage.
-   *
-   * @param permits the number of permits per interval
-   * @param intervalMs the interval in milliseconds
-   * @param rateType the rate type (OVERALL or PER_CLIENT)
-   */
-  private record RateLimitConfig(long permits, long intervalMs, RateType rateType)
-      implements Serializable {
-    @Serial private static final long serialVersionUID = 1L;
-
-    public RateLimitConfig {
-      Objects.requireNonNull(rateType, "rateType must not be null");
-    }
-
-    @Override
-    public String toString() {
-      return "RateLimitConfig[permits="
-          + permits
-          + ", intervalMs="
-          + intervalMs
-          + ", rateType="
-          + rateType
-          + "]";
-    }
   }
 }

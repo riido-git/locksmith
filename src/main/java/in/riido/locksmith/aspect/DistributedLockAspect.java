@@ -100,12 +100,11 @@ public class DistributedLockAspect {
   @Nullable
   public Object handleDistributedLock(@NonNull ProceedingJoinPoint joinPoint) throws Throwable {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-    final DistributedLock distributedLock =
-        signature.getMethod().getAnnotation(DistributedLock.class);
+    final DistributedLock annotation = signature.getMethod().getAnnotation(DistributedLock.class);
     final boolean debugMode = Boolean.TRUE.equals(lockProperties.debug());
     final String methodName = formatMethodSignature(joinPoint);
 
-    if (distributedLock.key().isBlank()) {
+    if (annotation.key().isBlank()) {
       throw new IllegalArgumentException(
           "DistributedLock key must not be blank on method: "
               + signature.getDeclaringType().getName()
@@ -113,20 +112,20 @@ public class DistributedLockAspect {
               + signature.getName());
     }
 
-    final String resolvedKey = SpELKeyResolver.resolve(distributedLock.key(), joinPoint);
+    final String resolvedKey = SpELKeyResolver.resolve(annotation.key(), joinPoint);
     final String lockKey = lockProperties.keyPrefix() + resolvedKey;
-    final RLock lock = getLock(lockKey, distributedLock.type());
-    final boolean autoRenew = distributedLock.autoRenew();
+    final RLock lock = getLock(lockKey, annotation.type());
+    final boolean autoRenew = annotation.autoRenew();
 
     // Log warnings for conflicting settings when autoRenew is enabled
     if (autoRenew) {
-      if (!distributedLock.leaseTime().isBlank()) {
+      if (!annotation.leaseTime().isBlank()) {
         LOG.warn(
             "autoRenew is enabled for [{}] but leaseTime is also specified. "
                 + "leaseTime will be ignored as Redisson's watchdog will manage lease renewal.",
             methodName);
       }
-      if (distributedLock.onLeaseExpired() == LeaseExpirationBehavior.THROW_EXCEPTION) {
+      if (annotation.onLeaseExpired() == LeaseExpirationBehavior.THROW_EXCEPTION) {
         LOG.warn(
             "autoRenew is enabled for [{}] but onLeaseExpired is set to THROW_EXCEPTION. "
                 + "This setting will have no effect as the lock will never expire during execution.",
@@ -137,17 +136,17 @@ public class DistributedLockAspect {
     final Duration leaseTime =
         autoRenew
             ? Duration.ofMillis(-1)
-            : DurationResolver.resolve(distributedLock.leaseTime(), lockProperties.leaseTime());
+            : DurationResolver.resolve(annotation.leaseTime(), lockProperties.leaseTime());
     final Duration waitTime =
-        DurationResolver.resolve(distributedLock.waitTime(), lockProperties.waitTime());
+        DurationResolver.resolve(annotation.waitTime(), lockProperties.waitTime());
 
     if (debugMode) {
       LOG.info(
           "Acquiring lock [{}] for [{}] - type={}, mode={}, leaseTime={}, waitTime={}, autoRenew={}",
           lockKey,
           methodName,
-          distributedLock.type(),
-          distributedLock.mode(),
+          annotation.type(),
+          annotation.mode(),
           leaseTime,
           waitTime,
           autoRenew);
@@ -157,12 +156,12 @@ public class DistributedLockAspect {
     final long acquisitionStartTime = System.currentTimeMillis();
 
     try {
-      lockAcquired = tryAcquireLock(lock, distributedLock.mode(), waitTime, leaseTime);
+      lockAcquired = tryAcquireLock(lock, annotation.mode(), waitTime, leaseTime);
 
       if (!lockAcquired) {
         if (lockMetrics != null) {
           String reason =
-              distributedLock.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+              annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
           lockMetrics.recordSkipped(reason);
         }
         if (debugMode) {
@@ -170,14 +169,14 @@ public class DistributedLockAspect {
               "Lock acquisition failed for [{}] in [{}], invoking skip handler: {}",
               lockKey,
               methodName,
-              distributedLock.skipHandler().getSimpleName());
+              annotation.skipHandler().getSimpleName());
         } else {
           LOG.info(
               "Skipping execution of [{}] - lock [{}] is held by another instance",
               methodName,
               lockKey);
         }
-        return handleSkip(distributedLock, joinPoint, lockKey, methodName);
+        return handleSkip(annotation, joinPoint, lockKey, methodName);
       }
 
       if (lockMetrics != null) {
@@ -210,7 +209,7 @@ public class DistributedLockAspect {
       // Skip lease expiration check when autoRenew is enabled
       if (!autoRenew) {
         checkLeaseExpiration(
-            distributedLock.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
+            annotation.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
       }
 
       return result;
@@ -226,21 +225,16 @@ public class DistributedLockAspect {
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
       if (lockMetrics != null) {
         String reason =
-            distributedLock.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
+            annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
         lockMetrics.recordSkipped(reason);
       }
-      return handleSkip(distributedLock, joinPoint, lockKey, methodName);
+      return handleSkip(annotation, joinPoint, lockKey, methodName);
     } finally {
       if (autoRenew && lockMetrics != null && lockAcquired) {
         lockMetrics.decrementAutoRenewActive();
       }
-      if (lockAcquired && lock.isHeldByCurrentThread()) {
+      if (lockAcquired) {
         releaseLock(lock, lockKey, methodName);
-      } else if (lockAcquired) {
-        LOG.warn(
-            "Lock [{}] for [{}] is no longer held by current thread (possibly expired), skipping unlock",
-            lockKey,
-            methodName);
       }
     }
   }
@@ -301,6 +295,9 @@ public class DistributedLockAspect {
           lockKey,
           methodName,
           e.getMessage());
+    } catch (Exception e) {
+      // Handle other exceptions (e.g., Redis connection failures)
+      LOG.warn("Failed to release lock [{}] for [{}]", lockKey, methodName, e);
     }
   }
 

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -280,7 +281,7 @@ class LocksmithRateLimitTemplateTest {
     @DisplayName("Should throw exception for zero permits via builder")
     void shouldThrowExceptionForZeroPermitsViaBuilder() {
       assertThrows(
-          IllegalArgumentException.class,
+          RateLimitConfigurationException.class,
           () -> template.forKey("test-key").permits(0).tryAcquire());
     }
 
@@ -288,7 +289,7 @@ class LocksmithRateLimitTemplateTest {
     @DisplayName("Should throw exception for negative permits via builder")
     void shouldThrowExceptionForNegativePermitsViaBuilder() {
       assertThrows(
-          IllegalArgumentException.class,
+          RateLimitConfigurationException.class,
           () -> template.forKey("test-key").permits(-1).tryAcquire());
     }
   }
