@@ -3,6 +3,7 @@ package in.riido.locksmith.template;
 import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
+import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.support.RateLimitConfig;
 import java.time.Duration;
@@ -182,7 +183,7 @@ public class LocksmithRateLimitTemplate {
       @NonNull Duration waitTime,
       boolean immediateMode) {
     if (permits <= 0) {
-      throw new IllegalArgumentException("Permits must be positive, got: " + permits);
+      throw new RateLimitConfigurationException("Permits must be positive, got: " + permits, key);
     }
 
     String fullKey = rateLimitProperties.keyPrefix() + key;
@@ -219,7 +220,7 @@ public class LocksmithRateLimitTemplate {
       @NonNull RateLimitCallback<T> callback)
       throws Exception {
     if (permits <= 0) {
-      throw new IllegalArgumentException("Permits must be positive, got: " + permits);
+      throw new RateLimitConfigurationException("Permits must be positive, got: " + permits, key);
     }
 
     String fullKey = rateLimitProperties.keyPrefix() + key;

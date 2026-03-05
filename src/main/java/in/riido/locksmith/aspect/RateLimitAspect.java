@@ -5,6 +5,7 @@ import in.riido.locksmith.RateLimit;
 import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
+import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.handler.RateLimitSkipHandler;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.models.RateLimitContext;
@@ -119,10 +120,11 @@ public class RateLimitAspect {
 
     // Validate permits is positive
     if (annotation.permits() <= 0) {
-      throw new IllegalArgumentException(
+      throw new RateLimitConfigurationException(
           String.format(
               "RateLimit permits must be positive on method [%s], got: %d",
-              methodName, annotation.permits()));
+              methodName, annotation.permits()),
+          annotation.key());
     }
 
     final String resolvedKey = SpELKeyResolver.resolve(annotation.key(), joinPoint);
@@ -136,9 +138,10 @@ public class RateLimitAspect {
 
     // Validate interval is positive
     if (interval.isZero() || interval.isNegative()) {
-      throw new IllegalArgumentException(
+      throw new RateLimitConfigurationException(
           String.format(
-              "RateLimit interval must be positive on method [%s], got: %s", methodName, interval));
+              "RateLimit interval must be positive on method [%s], got: %s", methodName, interval),
+          annotation.key());
     }
 
     final Duration waitTime =

@@ -2,6 +2,7 @@ package in.riido.locksmith.template;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
+import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
 import java.time.Duration;
 import java.util.Map;
@@ -212,7 +213,7 @@ public class LocksmithSemaphoreTemplate {
       @NonNull Duration leaseTime,
       boolean immediateMode) {
     if (permits <= 0) {
-      throw new IllegalArgumentException("Permits must be positive, got: " + permits);
+      throw new SemaphoreConfigurationException("Permits must be positive, got: " + permits, key);
     }
 
     String fullKey = semaphoreProperties.keyPrefix() + key;
@@ -260,7 +261,7 @@ public class LocksmithSemaphoreTemplate {
       @NonNull SemaphoreCallback<T> callback)
       throws Exception {
     if (permits <= 0) {
-      throw new IllegalArgumentException("Permits must be positive, got: " + permits);
+      throw new SemaphoreConfigurationException("Permits must be positive, got: " + permits, key);
     }
 
     String fullKey = semaphoreProperties.keyPrefix() + key;
@@ -387,16 +388,17 @@ public class LocksmithSemaphoreTemplate {
    *
    * @param fullKey the full semaphore key including prefix
    * @param permits the number of permits configured for this call
-   * @throws IllegalArgumentException if the key is used with inconsistent permit counts
+   * @throws SemaphoreConfigurationException if the key is used with inconsistent permit counts
    */
   private void validatePermitsConsistency(@NonNull String fullKey, int permits) {
     Integer existingPermits = keyToPermits.putIfAbsent(fullKey, permits);
     if (existingPermits != null && existingPermits != permits) {
-      throw new IllegalArgumentException(
+      throw new SemaphoreConfigurationException(
           String.format(
               "Semaphore key '%s' is used with inconsistent permits: %d (existing) vs %d (current). "
                   + "Each key must have the same permits across all usages.",
-              fullKey, existingPermits, permits));
+              fullKey, existingPermits, permits),
+          fullKey);
     }
   }
 
