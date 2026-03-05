@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,9 +84,11 @@ class LocksmithSemaphoreTemplateTest {
     @Test
     @DisplayName("Should throw exception for non-positive permits")
     void shouldThrowExceptionForNonPositivePermits() {
-      assertThrows(IllegalArgumentException.class, () -> template.tryAcquirePermit("my-key", 0));
+      assertThrows(
+          SemaphoreConfigurationException.class, () -> template.tryAcquirePermit("my-key", 0));
 
-      assertThrows(IllegalArgumentException.class, () -> template.tryAcquirePermit("my-key", -1));
+      assertThrows(
+          SemaphoreConfigurationException.class, () -> template.tryAcquirePermit("my-key", -1));
     }
 
     @Test
@@ -235,11 +238,11 @@ class LocksmithSemaphoreTemplateTest {
     @DisplayName("Should throw exception for non-positive permits in executeWithPermit")
     void shouldThrowExceptionForNonPositivePermitsInExecuteWithPermit() {
       assertThrows(
-          IllegalArgumentException.class,
+          SemaphoreConfigurationException.class,
           () -> template.executeWithPermit("my-key", 0, () -> "result"));
 
       assertThrows(
-          IllegalArgumentException.class,
+          SemaphoreConfigurationException.class,
           () -> template.executeWithPermit("my-key", -1, () -> "result"));
     }
 

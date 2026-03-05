@@ -3,6 +3,7 @@ package in.riido.locksmith.integration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -300,21 +301,23 @@ class LocksmithSemaphoreTemplateIntegrationTest {
     @DisplayName("Should throw exception for non-positive permits")
     void shouldThrowExceptionForNonPositivePermits() {
       assertThrows(
-          IllegalArgumentException.class, () -> template.tryAcquirePermit("invalid-test", 0));
+          SemaphoreConfigurationException.class,
+          () -> template.tryAcquirePermit("invalid-test", 0));
 
       assertThrows(
-          IllegalArgumentException.class, () -> template.tryAcquirePermit("invalid-test", -1));
+          SemaphoreConfigurationException.class,
+          () -> template.tryAcquirePermit("invalid-test", -1));
     }
 
     @Test
     @DisplayName("Should throw exception for non-positive permits in executeWithPermit")
     void shouldThrowExceptionForNonPositivePermitsInExecute() {
       assertThrows(
-          IllegalArgumentException.class,
+          SemaphoreConfigurationException.class,
           () -> template.executeWithPermit("invalid-test", 0, () -> "result"));
 
       assertThrows(
-          IllegalArgumentException.class,
+          SemaphoreConfigurationException.class,
           () -> template.executeWithPermit("invalid-test", -1, () -> "result"));
     }
   }
