@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.3] - 2026-03-06
+
+### Changed
+- Refactor templates to builder-only API with try-with-resources support (#53) (#54)
+- Refactor imports to use `org.redisson.api.RateType` consistently across rate limiting classes
+- Refactor template callback and handle subpackages
+
+### Fixed
+- Fix Javadoc errors from stale method references after builder API refactor
+- Fix logging, error handling, and behavioral inconsistencies across coordination primitives (#52)
+
 ## [3.0.2] - 2026-03-05
 
 ### Dependencies
