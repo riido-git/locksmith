@@ -176,7 +176,7 @@ public class RateLimitAspect {
             methodName,
             annotation.skipHandler().getSimpleName());
       } else {
-        LOG.info("Rate limit exceeded for [{}] - method [{}] skipped", rateLimitKey, methodName);
+        LOG.info("Skipping execution of [{}] - rate limit [{}] exceeded", methodName, rateLimitKey);
       }
       return handleSkip(annotation, joinPoint, rateLimitKey, methodName);
     }
