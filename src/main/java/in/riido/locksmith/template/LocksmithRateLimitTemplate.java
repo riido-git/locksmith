@@ -5,6 +5,7 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
 import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.support.RateLimitConfig;
+import in.riido.locksmith.template.callback.RateLimitCallback;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

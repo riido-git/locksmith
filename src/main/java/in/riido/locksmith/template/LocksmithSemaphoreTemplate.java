@@ -4,6 +4,8 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
+import in.riido.locksmith.template.callback.SemaphoreCallback;
+import in.riido.locksmith.template.handle.PermitHandle;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

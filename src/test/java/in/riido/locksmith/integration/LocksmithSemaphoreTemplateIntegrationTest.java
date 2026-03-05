@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
-import in.riido.locksmith.template.PermitHandle;
+import in.riido.locksmith.template.handle.PermitHandle;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;

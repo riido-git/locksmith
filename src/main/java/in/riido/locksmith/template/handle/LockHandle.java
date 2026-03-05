@@ -1,6 +1,7 @@
-package in.riido.locksmith.template;
+package in.riido.locksmith.template.handle;
 
 import in.riido.locksmith.metrics.LockMetrics;
+import in.riido.locksmith.template.LocksmithLockTemplate;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.redisson.api.RLock;
@@ -25,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * <p>If the lock was not acquired, {@link #close()} is a safe no-op.
  *
  * @author Garvit Joshi
- * @since 4.0.0
+ * @since 3.0.3
  * @see LocksmithLockTemplate
  */
 public class LockHandle implements AutoCloseable {
@@ -59,7 +60,7 @@ public class LockHandle implements AutoCloseable {
    * @return a handle with {@code isAcquired() == true}
    */
   @NonNull
-  static LockHandle acquired(
+  public static LockHandle acquired(
       @NonNull RLock lock, @NonNull String fullKey, @Nullable LockMetrics lockMetrics) {
     return new LockHandle(true, lock, fullKey, lockMetrics);
   }
@@ -70,7 +71,7 @@ public class LockHandle implements AutoCloseable {
    * @return a handle with {@code isAcquired() == false}
    */
   @NonNull
-  static LockHandle notAcquired() {
+  public static LockHandle notAcquired() {
     return new LockHandle(false, null, null, null);
   }
 

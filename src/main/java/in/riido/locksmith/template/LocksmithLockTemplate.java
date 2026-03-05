@@ -4,6 +4,8 @@ import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
 import in.riido.locksmith.metrics.LockMetrics;
+import in.riido.locksmith.template.callback.LockCallback;
+import in.riido.locksmith.template.handle.LockHandle;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;

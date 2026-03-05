@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
-import in.riido.locksmith.template.LockHandle;
 import in.riido.locksmith.template.LocksmithLockTemplate;
+import in.riido.locksmith.template.handle.LockHandle;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;

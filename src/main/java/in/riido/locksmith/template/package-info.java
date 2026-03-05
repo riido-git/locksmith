@@ -12,9 +12,10 @@
  *       operations
  *   <li>{@link in.riido.locksmith.template.LocksmithSemaphoreTemplate} - Template for distributed
  *       semaphore operations
- *   <li>{@link in.riido.locksmith.template.LockCallback} - Callback interface for lock execution
- *   <li>{@link in.riido.locksmith.template.SemaphoreCallback} - Callback interface for semaphore
+ *   <li>{@link in.riido.locksmith.template.callback.LockCallback} - Callback interface for lock
  *       execution
+ *   <li>{@link in.riido.locksmith.template.callback.SemaphoreCallback} - Callback interface for
+ *       semaphore execution
  * </ul>
  *
  * <p>Usage example:

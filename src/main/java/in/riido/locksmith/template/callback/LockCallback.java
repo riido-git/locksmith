@@ -1,5 +1,6 @@
-package in.riido.locksmith.template;
+package in.riido.locksmith.template.callback;
 
+import in.riido.locksmith.template.LocksmithLockTemplate;
 import org.jspecify.annotations.Nullable;
 
 /**

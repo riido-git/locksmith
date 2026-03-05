@@ -8,6 +8,7 @@ import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
+import in.riido.locksmith.template.handle.PermitHandle;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;

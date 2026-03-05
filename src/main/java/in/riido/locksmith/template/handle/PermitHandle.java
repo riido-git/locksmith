@@ -1,6 +1,7 @@
-package in.riido.locksmith.template;
+package in.riido.locksmith.template.handle;
 
 import in.riido.locksmith.metrics.SemaphoreMetrics;
+import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.redisson.api.RPermitExpirableSemaphore;
@@ -27,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * <p>If the permit was not acquired, {@link #close()} is a safe no-op.
  *
  * @author Garvit Joshi
- * @since 4.0.0
+ * @since 3.0.3
  * @see LocksmithSemaphoreTemplate
  */
 public class PermitHandle implements AutoCloseable {
@@ -65,7 +66,7 @@ public class PermitHandle implements AutoCloseable {
    * @return a handle with {@code isAcquired() == true}
    */
   @NonNull
-  static PermitHandle acquired(
+  public static PermitHandle acquired(
       @NonNull String permitId,
       @NonNull RPermitExpirableSemaphore semaphore,
       @NonNull String fullKey,
@@ -79,7 +80,7 @@ public class PermitHandle implements AutoCloseable {
    * @return a handle with {@code isAcquired() == false}
    */
   @NonNull
-  static PermitHandle notAcquired() {
+  public static PermitHandle notAcquired() {
     return new PermitHandle(false, null, null, null, null);
   }
 

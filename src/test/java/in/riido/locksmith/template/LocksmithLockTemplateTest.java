@@ -8,6 +8,7 @@ import static org.mockito.Mockito.*;
 
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.template.handle.LockHandle;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
