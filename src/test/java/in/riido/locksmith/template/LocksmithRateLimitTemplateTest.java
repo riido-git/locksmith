@@ -42,8 +42,8 @@ class LocksmithRateLimitTemplateTest {
   }
 
   @Nested
-  @DisplayName("Simple TryAcquire Tests")
-  class SimpleTryAcquireTests {
+  @DisplayName("Builder TryAcquire Tests")
+  class BuilderTryAcquireTests {
 
     @Test
     @DisplayName("Should acquire rate limit successfully")
@@ -52,7 +52,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(true);
 
-      boolean acquired = template.tryAcquire("test-key");
+      boolean acquired = template.withKey("test-key").tryAcquire();
 
       assertTrue(acquired);
       verify(rateLimiter).trySetRate(any(), eq(10L), eq(Duration.ofSeconds(1)));
@@ -66,7 +66,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(false);
 
-      boolean acquired = template.tryAcquire("test-key");
+      boolean acquired = template.withKey("test-key").tryAcquire();
 
       assertFalse(acquired);
     }
@@ -78,15 +78,71 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(true);
 
-      template.tryAcquire("my-key");
+      template.withKey("my-key").tryAcquire();
 
       verify(redissonClient).getRateLimiter("ratelimit:my-key");
+    }
+
+    @Test
+    @DisplayName("Should configure permits via builder")
+    void shouldConfigurePermitsViaBuilder() {
+      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
+      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
+      when(rateLimiter.tryAcquire()).thenReturn(true);
+
+      template.withKey("test-key").permits(20).tryAcquire();
+
+      verify(rateLimiter).trySetRate(any(), eq(20L), any());
+    }
+
+    @Test
+    @DisplayName("Should configure interval via builder")
+    void shouldConfigureIntervalViaBuilder() {
+      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
+      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
+      when(rateLimiter.tryAcquire()).thenReturn(true);
+
+      template.withKey("test-key").interval(Duration.ofMinutes(1)).tryAcquire();
+
+      verify(rateLimiter).trySetRate(any(), anyLong(), eq(Duration.ofMinutes(1)));
+    }
+
+    @Test
+    @DisplayName("Should configure wait time via builder")
+    void shouldConfigureWaitTimeViaBuilder() {
+      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
+      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
+      when(rateLimiter.tryAcquire(eq(1L), eq(Duration.ofSeconds(5)))).thenReturn(true);
+
+      template.withKey("test-key").waitTime(Duration.ofSeconds(5)).tryAcquire();
+
+      verify(rateLimiter).tryAcquire(eq(1L), eq(Duration.ofSeconds(5)));
+    }
+
+    @Test
+    @DisplayName("Should chain multiple configurations")
+    void shouldChainMultipleConfigurations() {
+      when(redissonClient.getRateLimiter("ratelimit:chained-key")).thenReturn(rateLimiter);
+      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
+      when(rateLimiter.tryAcquire(eq(1L), eq(Duration.ofSeconds(10)))).thenReturn(true);
+
+      boolean acquired =
+          template
+              .withKey("chained-key")
+              .permits(50)
+              .interval(Duration.ofMinutes(1))
+              .waitTime(Duration.ofSeconds(10))
+              .tryAcquire();
+
+      assertTrue(acquired);
+      verify(rateLimiter).trySetRate(any(), eq(50L), eq(Duration.ofMinutes(1)));
+      verify(rateLimiter).tryAcquire(eq(1L), eq(Duration.ofSeconds(10)));
     }
   }
 
   @Nested
-  @DisplayName("Execute With Rate Limit Tests")
-  class ExecuteWithRateLimitTests {
+  @DisplayName("Builder Execute Tests")
+  class BuilderExecuteTests {
 
     @Test
     @DisplayName("Should execute callback when rate limit acquired")
@@ -95,7 +151,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(true);
 
-      String result = template.executeWithRateLimit("test-key", () -> "success");
+      String result = template.withKey("test-key").execute(() -> "success");
 
       assertEquals("success", result);
     }
@@ -107,7 +163,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(false);
 
-      String result = template.executeWithRateLimit("test-key", () -> "should-not-execute");
+      String result = template.withKey("test-key").execute(() -> "should-not-execute");
 
       assertNull(result);
     }
@@ -122,68 +178,16 @@ class LocksmithRateLimitTemplateTest {
       assertThrows(
           RuntimeException.class,
           () ->
-              template.executeWithRateLimit(
-                  "test-key",
-                  () -> {
-                    throw new RuntimeException("Test error");
-                  }));
-    }
-  }
-
-  @Nested
-  @DisplayName("Builder Pattern Tests")
-  class BuilderPatternTests {
-
-    @Test
-    @DisplayName("Should create builder with key and default settings")
-    void shouldCreateBuilderWithKeyAndDefaults() {
-      when(redissonClient.getRateLimiter("ratelimit:builder-key")).thenReturn(rateLimiter);
-      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
-      when(rateLimiter.tryAcquire()).thenReturn(true);
-
-      boolean acquired = template.forKey("builder-key").tryAcquire();
-
-      assertTrue(acquired);
+              template
+                  .withKey("test-key")
+                  .execute(
+                      () -> {
+                        throw new RuntimeException("Test error");
+                      }));
     }
 
     @Test
-    @DisplayName("Should configure permits via builder")
-    void shouldConfigurePermitsViaBuilder() {
-      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
-      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
-      when(rateLimiter.tryAcquire()).thenReturn(true);
-
-      template.forKey("test-key").permits(20).tryAcquire();
-
-      verify(rateLimiter).trySetRate(any(), eq(20L), any());
-    }
-
-    @Test
-    @DisplayName("Should configure interval via builder")
-    void shouldConfigureIntervalViaBuilder() {
-      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
-      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
-      when(rateLimiter.tryAcquire()).thenReturn(true);
-
-      template.forKey("test-key").interval(Duration.ofMinutes(1)).tryAcquire();
-
-      verify(rateLimiter).trySetRate(any(), anyLong(), eq(Duration.ofMinutes(1)));
-    }
-
-    @Test
-    @DisplayName("Should configure wait time via builder")
-    void shouldConfigureWaitTimeViaBuilder() {
-      when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
-      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
-      when(rateLimiter.tryAcquire(eq(1L), eq(Duration.ofSeconds(5)))).thenReturn(true);
-
-      template.forKey("test-key").waitTime(Duration.ofSeconds(5)).tryAcquire();
-
-      verify(rateLimiter).tryAcquire(eq(1L), eq(Duration.ofSeconds(5)));
-    }
-
-    @Test
-    @DisplayName("Should execute callback via builder")
+    @DisplayName("Should execute callback via builder with custom config")
     void shouldExecuteCallbackViaBuilder() throws Exception {
       when(redissonClient.getRateLimiter("ratelimit:test-key")).thenReturn(rateLimiter);
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
@@ -192,7 +196,7 @@ class LocksmithRateLimitTemplateTest {
       AtomicInteger counter = new AtomicInteger(0);
       String result =
           template
-              .forKey("test-key")
+              .withKey("test-key")
               .permits(10)
               .interval(Duration.ofSeconds(1))
               .execute(
@@ -203,26 +207,6 @@ class LocksmithRateLimitTemplateTest {
 
       assertEquals("executed", result);
       assertEquals(1, counter.get());
-    }
-
-    @Test
-    @DisplayName("Should chain multiple configurations")
-    void shouldChainMultipleConfigurations() {
-      when(redissonClient.getRateLimiter("ratelimit:chained-key")).thenReturn(rateLimiter);
-      when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
-      when(rateLimiter.tryAcquire(eq(1L), eq(Duration.ofSeconds(10)))).thenReturn(true);
-
-      boolean acquired =
-          template
-              .forKey("chained-key")
-              .permits(50)
-              .interval(Duration.ofMinutes(1))
-              .waitTime(Duration.ofSeconds(10))
-              .tryAcquire();
-
-      assertTrue(acquired);
-      verify(rateLimiter).trySetRate(any(), eq(50L), eq(Duration.ofMinutes(1)));
-      verify(rateLimiter).tryAcquire(eq(1L), eq(Duration.ofSeconds(10)));
     }
   }
 
@@ -245,7 +229,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(true);
 
-      template.executeWithRateLimit("test-key", () -> "result");
+      template.withKey("test-key").execute(() -> "result");
 
       verify(metrics).recordAcquired();
       verify(metrics).recordAcquisitionTime(anyLong());
@@ -254,7 +238,7 @@ class LocksmithRateLimitTemplateTest {
 
     @Test
     @DisplayName("Should record exceeded metric when rate limit not acquired")
-    void shouldRecordExceededMetricWhenNotAcquired() throws Exception {
+    void shouldRecordExceededMetricWhenNotAcquired() {
       properties =
           new LocksmithProperties(
               null,
@@ -267,7 +251,7 @@ class LocksmithRateLimitTemplateTest {
       when(rateLimiter.trySetRate(any(), anyLong(), any())).thenReturn(true);
       when(rateLimiter.tryAcquire()).thenReturn(false);
 
-      template.tryAcquire("test-key");
+      template.withKey("test-key").tryAcquire();
 
       verify(metrics).recordExceeded("immediate");
     }
@@ -282,7 +266,7 @@ class LocksmithRateLimitTemplateTest {
     void shouldThrowExceptionForZeroPermitsViaBuilder() {
       assertThrows(
           RateLimitConfigurationException.class,
-          () -> template.forKey("test-key").permits(0).tryAcquire());
+          () -> template.withKey("test-key").permits(0).tryAcquire());
     }
 
     @Test
@@ -290,7 +274,7 @@ class LocksmithRateLimitTemplateTest {
     void shouldThrowExceptionForNegativePermitsViaBuilder() {
       assertThrows(
           RateLimitConfigurationException.class,
-          () -> template.forKey("test-key").permits(-1).tryAcquire());
+          () -> template.withKey("test-key").permits(-1).tryAcquire());
     }
   }
 }

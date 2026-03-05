@@ -19,33 +19,34 @@ import org.slf4j.LoggerFactory;
 /**
  * Template class for programmatic distributed rate limiting operations.
  *
- * <p>This class provides a programmatic API for distributed rate limiting, complementing the
- * annotation-based approach provided by {@link in.riido.locksmith.RateLimit}. Use this when you
- * need more control over rate limit checking, or when annotations are not suitable.
+ * <p>This class provides a builder-based programmatic API for distributed rate limiting,
+ * complementing the annotation-based approach provided by {@link in.riido.locksmith.RateLimit}. Use
+ * this when you need more control over rate limit checking, or when annotations are not suitable.
  *
  * <p>All methods apply the configured key prefix automatically. For example, if the key prefix is
- * "ratelimit:" and you call {@code tryAcquire("api-call")}, the actual Redis key will be
+ * "ratelimit:" and you use {@code withKey("api-call")}, the actual Redis key will be
  * "ratelimit:api-call".
  *
- * <h2>Simple Usage</h2>
+ * <h2>Simple check</h2>
  *
  * <pre>{@code
- * // Check rate limit
- * if (rateLimitTemplate.tryAcquire("api-call")) {
+ * if (rateLimitTemplate.withKey("api-call").tryAcquire()) {
  *     // Execute operation
  * }
- *
- * // Callback-based (recommended)
- * String result = rateLimitTemplate.executeWithRateLimit("api-call", () -> {
- *     return apiClient.call();
- * });
  * }</pre>
  *
- * <h2>Builder for Custom Configuration</h2>
+ * <h2>Callback-based</h2>
+ *
+ * <pre>{@code
+ * String result = rateLimitTemplate.withKey("api-call")
+ *     .execute(() -> apiClient.call());
+ * }</pre>
+ *
+ * <h2>Builder with custom configuration</h2>
  *
  * <pre>{@code
  * // Custom rate: 100 requests per minute
- * if (rateLimitTemplate.forKey("heavy-operation")
+ * if (rateLimitTemplate.withKey("heavy-operation")
  *         .permits(100)
  *         .interval(Duration.ofMinutes(1))
  *         .tryAcquire()) {
@@ -53,13 +54,11 @@ import org.slf4j.LoggerFactory;
  * }
  *
  * // Execute with custom rate and wait time
- * String result = rateLimitTemplate.forKey("throttled-api")
+ * String result = rateLimitTemplate.withKey("throttled-api")
  *     .permits(10)
  *     .interval(Duration.ofSeconds(1))
  *     .waitTime(Duration.ofSeconds(5))
- *     .execute(() -> {
- *         return apiClient.call();
- *     });
+ *     .execute(() -> apiClient.call());
  * }</pre>
  *
  * @author Garvit Joshi
@@ -109,57 +108,20 @@ public class LocksmithRateLimitTemplate {
     this.rateLimitMetrics = rateLimitMetrics;
   }
 
-  // ========== Simple Methods ==========
-
-  /**
-   * Tries to acquire a rate limit permit immediately without waiting.
-   *
-   * <p>Uses the default rate of 10 permits per second. For custom rates, use {@link
-   * #forKey(String)}.
-   *
-   * @param key the rate limiter key (prefix will be applied automatically)
-   * @return true if a permit was acquired, false if rate limit exceeded
-   */
-  public boolean tryAcquire(@NonNull String key) {
-    return doTryAcquire(
-        key, DEFAULT_PERMITS, DEFAULT_INTERVAL, RateType.OVERALL, Duration.ZERO, true);
-  }
-
-  /**
-   * Executes a callback after acquiring a rate limit permit.
-   *
-   * <p>Tries to acquire a permit immediately without waiting. Uses the default rate of 10 permits
-   * per second. For custom rates, use {@link #forKey(String)}.
-   *
-   * @param <T> the type of result returned by the callback
-   * @param key the rate limiter key (prefix will be applied automatically)
-   * @param callback the callback to execute after permit acquisition
-   * @return the result of the callback, or null if rate limit exceeded
-   * @throws Exception if the callback throws an exception
-   */
-  @Nullable
-  public <T> T executeWithRateLimit(@NonNull String key, @NonNull RateLimitCallback<T> callback)
-      throws Exception {
-    return doExecute(
-        key, DEFAULT_PERMITS, DEFAULT_INTERVAL, RateType.OVERALL, Duration.ZERO, true, callback);
-  }
-
   // ========== Builder Entry Point ==========
 
   /**
    * Creates a builder for rate limit operations on the specified key.
    *
-   * <p>Use the builder when you need to customize the rate configuration.
-   *
    * <pre>{@code
    * // Custom rate: 100 requests per minute
-   * boolean acquired = rateLimitTemplate.forKey("heavy-operation")
+   * boolean acquired = rateLimitTemplate.withKey("heavy-operation")
    *     .permits(100)
    *     .interval(Duration.ofMinutes(1))
    *     .tryAcquire();
    *
    * // Execute with custom rate
-   * String result = rateLimitTemplate.forKey("api-call")
+   * String result = rateLimitTemplate.withKey("api-call")
    *     .permits(20)
    *     .interval(Duration.ofSeconds(1))
    *     .execute(() -> apiClient.call());
@@ -169,7 +131,7 @@ public class LocksmithRateLimitTemplate {
    * @return a builder for configuring and executing rate limit operations
    */
   @NonNull
-  public RateLimitOperationBuilder forKey(@NonNull String key) {
+  public RateLimitOperationBuilder withKey(@NonNull String key) {
     return new RateLimitOperationBuilder(key);
   }
 
@@ -318,19 +280,19 @@ public class LocksmithRateLimitTemplate {
    * Builder for configuring and executing rate limit operations.
    *
    * <p>This builder provides a fluent API for rate limit operations with custom configuration. Use
-   * {@link LocksmithRateLimitTemplate#forKey(String)} to create an instance.
+   * {@link LocksmithRateLimitTemplate#withKey(String)} to create an instance.
    *
    * <p>Example usage:
    *
    * <pre>{@code
    * // Custom rate: 100 requests per minute
-   * boolean acquired = rateLimitTemplate.forKey("heavy-operation")
+   * boolean acquired = rateLimitTemplate.withKey("heavy-operation")
    *     .permits(100)
    *     .interval(Duration.ofMinutes(1))
    *     .tryAcquire();
    *
    * // Execute with custom rate and wait time
-   * String result = rateLimitTemplate.forKey("throttled-api")
+   * String result = rateLimitTemplate.withKey("throttled-api")
    *     .permits(10)
    *     .interval(Duration.ofSeconds(1))
    *     .waitTime(Duration.ofSeconds(5))

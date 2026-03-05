@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
+import in.riido.locksmith.template.PermitHandle;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -74,9 +75,10 @@ class LocksmithSemaphoreTemplateIntegrationTest {
     @Test
     @DisplayName("Should acquire and release permit")
     void shouldAcquireAndReleasePermit() {
-      String permitId = template.tryAcquirePermit("basic-test", 5);
-      assertNotNull(permitId);
-      template.releasePermit("basic-test", permitId);
+      try (PermitHandle handle = template.withKey("basic-test").permits(5).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+        assertNotNull(handle.permitId());
+      }
     }
 
     @Test
@@ -85,13 +87,14 @@ class LocksmithSemaphoreTemplateIntegrationTest {
       AtomicInteger executed = new AtomicInteger(0);
 
       String result =
-          template.executeWithPermit(
-              "callback-test",
-              5,
-              () -> {
-                executed.set(1);
-                return "success";
-              });
+          template
+              .withKey("callback-test")
+              .permits(5)
+              .execute(
+                  () -> {
+                    executed.set(1);
+                    return "success";
+                  });
 
       assertEquals("success", result);
       assertEquals(1, executed.get());
@@ -103,17 +106,18 @@ class LocksmithSemaphoreTemplateIntegrationTest {
       assertThrows(
           RuntimeException.class,
           () ->
-              template.executeWithPermit(
-                  "exception-test",
-                  5,
-                  () -> {
-                    throw new RuntimeException("Test error");
-                  }));
+              template
+                  .withKey("exception-test")
+                  .permits(5)
+                  .execute(
+                      () -> {
+                        throw new RuntimeException("Test error");
+                      }));
 
       // Should be able to acquire permit again
-      String permitId = template.tryAcquirePermit("exception-test", 5);
-      assertNotNull(permitId);
-      template.releasePermit("exception-test", permitId);
+      try (PermitHandle handle = template.withKey("exception-test").permits(5).tryAcquire()) {
+        assertTrue(handle.isAcquired());
+      }
     }
   }
 
@@ -135,7 +139,8 @@ class LocksmithSemaphoreTemplateIntegrationTest {
             () -> {
               try {
                 template
-                    .forKey("limit-test", maxPermits)
+                    .withKey("limit-test")
+                    .permits(maxPermits)
                     .waitTime(Duration.ofSeconds(10))
                     .execute(
                         () -> {
@@ -162,8 +167,8 @@ class LocksmithSemaphoreTemplateIntegrationTest {
     }
 
     @Test
-    @DisplayName("Should return null when all permits are held")
-    void shouldReturnNullWhenAllPermitsHeld() throws Exception {
+    @DisplayName("Should not acquire when all permits are held")
+    void shouldNotAcquireWhenAllPermitsHeld() throws Exception {
       int maxPermits = 2;
       CountDownLatch permitsAcquired = new CountDownLatch(maxPermits);
       CountDownLatch testComplete = new CountDownLatch(1);
@@ -175,11 +180,12 @@ class LocksmithSemaphoreTemplateIntegrationTest {
         executor.submit(
             () -> {
               try {
-                String permitId = template.tryAcquirePermit("full-test", maxPermits);
-                if (permitId != null) {
+                PermitHandle handle =
+                    template.withKey("full-test").permits(maxPermits).tryAcquire();
+                if (handle.isAcquired()) {
                   permitsAcquired.countDown();
                   testComplete.await(10, TimeUnit.SECONDS);
-                  template.releasePermit("full-test", permitId);
+                  handle.close();
                 }
               } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -190,8 +196,9 @@ class LocksmithSemaphoreTemplateIntegrationTest {
       assertTrue(permitsAcquired.await(5, TimeUnit.SECONDS));
 
       // Try to acquire when all permits are held
-      String permitId = template.tryAcquirePermit("full-test", maxPermits);
-      assertNull(permitId);
+      try (PermitHandle handle = template.withKey("full-test").permits(maxPermits).tryAcquire()) {
+        assertFalse(handle.isAcquired());
+      }
 
       testComplete.countDown();
       executor.shutdown();
@@ -213,15 +220,14 @@ class LocksmithSemaphoreTemplateIntegrationTest {
       Thread firstThread =
           new Thread(
               () -> {
-                String permitId = template.tryAcquirePermit("wait-test", maxPermits);
-                if (permitId != null) {
-                  firstPermitAcquired.countDown();
-                  try {
+                try (PermitHandle handle =
+                    template.withKey("wait-test").permits(maxPermits).tryAcquire()) {
+                  if (handle.isAcquired()) {
+                    firstPermitAcquired.countDown();
                     Thread.sleep(200);
-                  } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
                   }
-                  template.releasePermit("wait-test", permitId);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
                 }
               });
 
@@ -230,14 +236,15 @@ class LocksmithSemaphoreTemplateIntegrationTest {
               () -> {
                 try {
                   firstPermitAcquired.await();
-                  String permitId =
+                  try (PermitHandle handle =
                       template
-                          .forKey("wait-test", maxPermits)
+                          .withKey("wait-test")
+                          .permits(maxPermits)
                           .waitTime(Duration.ofSeconds(5))
-                          .tryAcquire();
-                  if (permitId != null) {
-                    secondPermitAcquired.countDown();
-                    template.releasePermit("wait-test", permitId);
+                          .tryAcquire()) {
+                    if (handle.isAcquired()) {
+                      secondPermitAcquired.countDown();
+                    }
                   }
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
@@ -271,14 +278,15 @@ class LocksmithSemaphoreTemplateIntegrationTest {
         executor.submit(
             () -> {
               try {
-                template.executeWithPermit(
-                    key,
-                    1, // Only 1 permit each, but different keys
-                    () -> {
-                      Thread.sleep(50);
-                      completedCount.incrementAndGet();
-                      return null;
-                    });
+                template
+                    .withKey(key)
+                    .permits(1)
+                    .execute(
+                        () -> {
+                          Thread.sleep(50);
+                          completedCount.incrementAndGet();
+                          return null;
+                        });
               } catch (Exception e) {
                 // Ignore
               } finally {
@@ -302,23 +310,23 @@ class LocksmithSemaphoreTemplateIntegrationTest {
     void shouldThrowExceptionForNonPositivePermits() {
       assertThrows(
           SemaphoreConfigurationException.class,
-          () -> template.tryAcquirePermit("invalid-test", 0));
+          () -> template.withKey("invalid-test").permits(0).tryAcquire());
 
       assertThrows(
           SemaphoreConfigurationException.class,
-          () -> template.tryAcquirePermit("invalid-test", -1));
+          () -> template.withKey("invalid-test").permits(-1).tryAcquire());
     }
 
     @Test
-    @DisplayName("Should throw exception for non-positive permits in executeWithPermit")
+    @DisplayName("Should throw exception for non-positive permits in execute")
     void shouldThrowExceptionForNonPositivePermitsInExecute() {
       assertThrows(
           SemaphoreConfigurationException.class,
-          () -> template.executeWithPermit("invalid-test", 0, () -> "result"));
+          () -> template.withKey("invalid-test").permits(0).execute(() -> "result"));
 
       assertThrows(
           SemaphoreConfigurationException.class,
-          () -> template.executeWithPermit("invalid-test", -1, () -> "result"));
+          () -> template.withKey("invalid-test").permits(-1).execute(() -> "result"));
     }
   }
 
@@ -342,14 +350,15 @@ class LocksmithSemaphoreTemplateIntegrationTest {
         executor.submit(
             () -> {
               try {
-                String permitId = template.tryAcquirePermit("init-test", maxPermits);
-                if (permitId != null) {
+                PermitHandle handle =
+                    template.withKey("init-test").permits(maxPermits).tryAcquire();
+                if (handle.isAcquired()) {
                   int current = concurrentAcquisitions.incrementAndGet();
                   maxConcurrent.updateAndGet(max -> Math.max(max, current));
                   allAcquired.countDown();
                   testComplete.await(10, TimeUnit.SECONDS);
                   concurrentAcquisitions.decrementAndGet();
-                  template.releasePermit("init-test", permitId);
+                  handle.close();
                 }
               } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

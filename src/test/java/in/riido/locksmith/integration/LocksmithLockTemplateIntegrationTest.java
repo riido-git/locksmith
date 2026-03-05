@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
+import in.riido.locksmith.template.LockHandle;
 import in.riido.locksmith.template.LocksmithLockTemplate;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -74,9 +75,10 @@ class LocksmithLockTemplateIntegrationTest {
     @Test
     @DisplayName("Should acquire and release lock")
     void shouldAcquireAndReleaseLock() {
-      assertTrue(template.tryLock("basic-test"));
-      assertTrue(template.isLocked("basic-test"));
-      template.unlock("basic-test");
+      try (LockHandle handle = template.withKey("basic-test").tryLock()) {
+        assertTrue(handle.isAcquired());
+        assertTrue(template.isLocked("basic-test"));
+      }
       assertFalse(template.isLocked("basic-test"));
     }
 
@@ -84,12 +86,13 @@ class LocksmithLockTemplateIntegrationTest {
     @DisplayName("Should execute callback within lock")
     void shouldExecuteCallbackWithinLock() throws Exception {
       String result =
-          template.executeWithLock(
-              "callback-test",
-              () -> {
-                assertTrue(template.isLocked("callback-test"));
-                return "success";
-              });
+          template
+              .withKey("callback-test")
+              .execute(
+                  () -> {
+                    assertTrue(template.isLocked("callback-test"));
+                    return "success";
+                  });
 
       assertEquals("success", result);
       assertFalse(template.isLocked("callback-test"));
@@ -101,11 +104,12 @@ class LocksmithLockTemplateIntegrationTest {
       assertThrows(
           RuntimeException.class,
           () ->
-              template.executeWithLock(
-                  "exception-test",
-                  () -> {
-                    throw new RuntimeException("Test error");
-                  }));
+              template
+                  .withKey("exception-test")
+                  .execute(
+                      () -> {
+                        throw new RuntimeException("Test error");
+                      }));
 
       assertFalse(template.isLocked("exception-test"));
     }
@@ -128,7 +132,7 @@ class LocksmithLockTemplateIntegrationTest {
             () -> {
               try {
                 template
-                    .forKey("contention-test")
+                    .withKey("contention-test")
                     .waitTime(Duration.ofSeconds(10))
                     .execute(
                         () -> {
@@ -155,7 +159,8 @@ class LocksmithLockTemplateIntegrationTest {
     @DisplayName("Should return false immediately when lock held by another")
     void shouldReturnFalseWhenLockHeld() throws Exception {
       // Acquire lock in current thread
-      assertTrue(template.tryLock("held-lock"));
+      LockHandle mainHandle = template.withKey("held-lock").tryLock();
+      assertTrue(mainHandle.isAcquired());
 
       // Try to acquire from another thread
       ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -163,12 +168,14 @@ class LocksmithLockTemplateIntegrationTest {
           executor
               .submit(
                   () -> {
-                    return template.tryLock("held-lock");
+                    try (LockHandle handle = template.withKey("held-lock").tryLock()) {
+                      return handle.isAcquired();
+                    }
                   })
               .get(5, TimeUnit.SECONDS);
 
       assertFalse(otherThreadResult);
-      template.unlock("held-lock");
+      mainHandle.close();
       executor.shutdown();
     }
 
@@ -176,21 +183,17 @@ class LocksmithLockTemplateIntegrationTest {
     @DisplayName("Should acquire lock after release by another thread")
     void shouldAcquireLockAfterRelease() throws Exception {
       CountDownLatch lockAcquired = new CountDownLatch(1);
-      CountDownLatch lockReleased = new CountDownLatch(1);
       AtomicInteger secondThreadAcquired = new AtomicInteger(0);
 
       Thread firstThread =
           new Thread(
               () -> {
-                template.tryLock("release-test");
-                lockAcquired.countDown();
-                try {
+                try (LockHandle handle = template.withKey("release-test").tryLock()) {
+                  lockAcquired.countDown();
                   Thread.sleep(100);
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
                 }
-                template.unlock("release-test");
-                lockReleased.countDown();
               });
 
       Thread secondThread =
@@ -198,9 +201,11 @@ class LocksmithLockTemplateIntegrationTest {
               () -> {
                 try {
                   lockAcquired.await();
-                  if (template.forKey("release-test").waitTime(Duration.ofSeconds(5)).tryLock()) {
-                    secondThreadAcquired.set(1);
-                    template.unlock("release-test");
+                  try (LockHandle handle =
+                      template.withKey("release-test").waitTime(Duration.ofSeconds(5)).tryLock()) {
+                    if (handle.isAcquired()) {
+                      secondThreadAcquired.set(1);
+                    }
                   }
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
@@ -233,22 +238,19 @@ class LocksmithLockTemplateIntegrationTest {
       for (int i = 0; i < 3; i++) {
         executor.submit(
             () -> {
-              try {
-                if (template
-                    .forKey("rw-read-test")
-                    .waitTime(Duration.ofSeconds(5))
-                    .leaseTime(Duration.ofMinutes(1))
-                    .lockType(LockType.READ)
-                    .tryLock()) {
-                  try {
-                    int current = concurrentReaders.incrementAndGet();
-                    maxConcurrent.updateAndGet(max -> Math.max(max, current));
-                    allStarted.countDown();
-                    Thread.sleep(200);
-                    concurrentReaders.decrementAndGet();
-                  } finally {
-                    template.forKey("rw-read-test").lockType(LockType.READ).unlock();
-                  }
+              try (LockHandle handle =
+                  template
+                      .withKey("rw-read-test")
+                      .waitTime(Duration.ofSeconds(5))
+                      .leaseTime(Duration.ofMinutes(1))
+                      .lockType(LockType.READ)
+                      .tryLock()) {
+                if (handle.isAcquired()) {
+                  int current = concurrentReaders.incrementAndGet();
+                  maxConcurrent.updateAndGet(max -> Math.max(max, current));
+                  allStarted.countDown();
+                  Thread.sleep(200);
+                  concurrentReaders.decrementAndGet();
                 }
               } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -267,12 +269,13 @@ class LocksmithLockTemplateIntegrationTest {
     @DisplayName("Should block write lock when read lock held")
     void shouldBlockWriteWhenReadHeld() throws Exception {
       // Acquire read lock via builder
-      assertTrue(
+      LockHandle readHandle =
           template
-              .forKey("rw-block-test")
+              .withKey("rw-block-test")
               .leaseTime(Duration.ofMinutes(1))
               .lockType(LockType.READ)
-              .tryLock());
+              .tryLock();
+      assertTrue(readHandle.isAcquired());
 
       // Try write lock from another thread
       ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -280,16 +283,19 @@ class LocksmithLockTemplateIntegrationTest {
           executor
               .submit(
                   () -> {
-                    return template
-                        .forKey("rw-block-test")
-                        .leaseTime(Duration.ofMinutes(1))
-                        .lockType(LockType.WRITE)
-                        .tryLock();
+                    try (LockHandle handle =
+                        template
+                            .withKey("rw-block-test")
+                            .leaseTime(Duration.ofMinutes(1))
+                            .lockType(LockType.WRITE)
+                            .tryLock()) {
+                      return handle.isAcquired();
+                    }
                   })
               .get(5, TimeUnit.SECONDS);
 
       assertFalse(writeResult);
-      template.forKey("rw-block-test").lockType(LockType.READ).unlock();
+      readHandle.close();
       executor.shutdown();
     }
 
@@ -297,12 +303,13 @@ class LocksmithLockTemplateIntegrationTest {
     @DisplayName("Should block read lock when write lock held")
     void shouldBlockReadWhenWriteHeld() throws Exception {
       // Acquire write lock via builder
-      assertTrue(
+      LockHandle writeHandle =
           template
-              .forKey("rw-block-test2")
+              .withKey("rw-block-test2")
               .leaseTime(Duration.ofMinutes(1))
               .lockType(LockType.WRITE)
-              .tryLock());
+              .tryLock();
+      assertTrue(writeHandle.isAcquired());
 
       // Try read lock from another thread
       ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -310,16 +317,19 @@ class LocksmithLockTemplateIntegrationTest {
           executor
               .submit(
                   () -> {
-                    return template
-                        .forKey("rw-block-test2")
-                        .leaseTime(Duration.ofMinutes(1))
-                        .lockType(LockType.READ)
-                        .tryLock();
+                    try (LockHandle handle =
+                        template
+                            .withKey("rw-block-test2")
+                            .leaseTime(Duration.ofMinutes(1))
+                            .lockType(LockType.READ)
+                            .tryLock()) {
+                      return handle.isAcquired();
+                    }
                   })
               .get(5, TimeUnit.SECONDS);
 
       assertFalse(readResult);
-      template.forKey("rw-block-test2").lockType(LockType.WRITE).unlock();
+      writeHandle.close();
       executor.shutdown();
     }
   }
@@ -334,7 +344,7 @@ class LocksmithLockTemplateIntegrationTest {
       // Use autoRenew() via builder
       String result =
           template
-              .forKey("auto-renew-test")
+              .withKey("auto-renew-test")
               .autoRenew()
               .execute(
                   () -> {
@@ -365,13 +375,14 @@ class LocksmithLockTemplateIntegrationTest {
         executor.submit(
             () -> {
               try {
-                template.executeWithLock(
-                    key,
-                    () -> {
-                      Thread.sleep(100);
-                      completedCount.incrementAndGet();
-                      return null;
-                    });
+                template
+                    .withKey(key)
+                    .execute(
+                        () -> {
+                          Thread.sleep(100);
+                          completedCount.incrementAndGet();
+                          return null;
+                        });
               } catch (Exception e) {
                 // Ignore
               } finally {
