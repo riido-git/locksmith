@@ -127,10 +127,11 @@ public class DistributedSemaphoreAspect {
 
     // Validate permits is positive
     if (annotation.permits() <= 0) {
-      throw new IllegalArgumentException(
+      throw new SemaphoreConfigurationException(
           String.format(
               "DistributedSemaphore permits must be positive on method [%s], got: %d",
-              methodName, annotation.permits()));
+              methodName, annotation.permits()),
+          annotation.key());
     }
 
     final String resolvedKey = SpELKeyResolver.resolve(annotation.key(), joinPoint);
