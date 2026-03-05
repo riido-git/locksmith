@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.RateLimit;
-import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.handler.ratelimit.RateLimitReturnDefaultHandler;
 import in.riido.locksmith.handler.ratelimit.RateLimitThrowExceptionHandler;
@@ -16,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.ApplicationContext;
 

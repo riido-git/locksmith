@@ -1,6 +1,5 @@
 package in.riido.locksmith.template;
 
-import in.riido.locksmith.RateType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
 import in.riido.locksmith.exception.RateLimitConfigurationException;
@@ -12,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -252,10 +252,8 @@ public class LocksmithRateLimitTemplate {
       return rateLimiter;
     }
 
-    org.redisson.api.RateType redissonRateType =
-        rateType == RateType.OVERALL
-            ? org.redisson.api.RateType.OVERALL
-            : org.redisson.api.RateType.PER_CLIENT;
+    RateType redissonRateType =
+        rateType == RateType.OVERALL ? RateType.OVERALL : RateType.PER_CLIENT;
 
     boolean created = rateLimiter.trySetRate(redissonRateType, permits, interval);
 

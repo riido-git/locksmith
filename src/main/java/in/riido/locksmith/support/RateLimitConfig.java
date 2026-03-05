@@ -1,10 +1,10 @@
 package in.riido.locksmith.support;
 
-import in.riido.locksmith.RateType;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Objects;
 import org.jspecify.annotations.NonNull;
+import org.redisson.api.RateType;
 
 /**
  * Configuration record for rate limiter settings. Used for tracking and validating rate limiter

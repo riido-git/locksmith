@@ -9,6 +9,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.redisson.api.RateType;
 
 /**
  * Annotation to apply distributed rate limiting on a method. Limits the number of executions within
