@@ -16,11 +16,23 @@ import org.redisson.api.RateType;
  * @author Garvit Joshi
  * @since 3.0.0
  */
-public record RateLimitConfig(long permits, long intervalMs, @NonNull RateType rateType)
+public record RateLimitConfig(
+    /** The number of permits granted per interval. */
+    long permits,
+    /** The interval window in milliseconds. */
+    long intervalMs,
+    /** The Redisson rate type for permit distribution semantics. */
+    @NonNull RateType rateType)
     implements Serializable {
   @Serial private static final long serialVersionUID = 1L;
 
-  /** Validates that {@code rateType} is not null. */
+  /**
+   * Creates a rate limit configuration and validates required values.
+   *
+   * @param permits the number of permits per interval
+   * @param intervalMs the interval in milliseconds
+   * @param rateType the rate type (OVERALL or PER_CLIENT)
+   */
   public RateLimitConfig {
     Objects.requireNonNull(rateType, "rateType must not be null");
   }
