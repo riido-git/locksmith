@@ -1,8 +1,11 @@
+
 # Locksmith
 
 [![Maven Central](https://img.shields.io/maven-central/v/in.riido/locksmith-spring-boot-starter)](https://central.sonatype.com/artifact/in.riido/locksmith-spring-boot-starter)
 
 A Spring Boot starter for Redis-based distributed locking, semaphores, and rate limiting using annotations.
+
+> *Made by a human who guards the locks, and an AI that picks them — for good reasons, mostly.*
 
 ## Overview
 
