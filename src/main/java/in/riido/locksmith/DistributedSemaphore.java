@@ -151,7 +151,11 @@ public @interface DistributedSemaphore {
   /**
    * Custom handler for permit acquisition failures.
    *
-   * <p>The handler must have a public no-argument constructor. Built-in handlers:
+   * <p>Handlers can be defined as Spring beans (with dependency injection support) or as plain
+   * classes with a public no-argument constructor. Spring beans are looked up first by type, then
+   * reflection-based instantiation is used as a fallback.
+   *
+   * <p>Built-in handlers:
    *
    * <ul>
    *   <li>{@link SemaphoreThrowExceptionHandler} (default): Throws {@link

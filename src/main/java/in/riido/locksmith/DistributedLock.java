@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
  * public void criticalTask() { }
  *
  * // For scheduled tasks - silently skip if lock not acquired
- * @DistributedLock(key = "scheduled-task", skipHandler = ReturnDefaultHandler.class)
+ * @DistributedLock(key = "scheduled-task", skipHandler = LockReturnDefaultHandler.class)
  * public void scheduledTask() { }
  *
  * // SpEL with method parameter - lock per user
@@ -211,7 +211,8 @@ public @interface DistributedLock {
    *
    * <ul>
    *   <li>When enabled, {@link #leaseTime()} is ignored (a warning is logged if specified)
-   *   <li>When enabled, {@link #onLeaseExpired()} has no effect (a warning is logged if not IGNORE)
+   *   <li>When enabled, {@link #onLeaseExpired()} has no effect (a warning is logged if set to
+   *       THROW_EXCEPTION)
    * </ul>
    *
    * <p>Usage example:

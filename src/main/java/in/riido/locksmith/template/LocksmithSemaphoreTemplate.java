@@ -1,18 +1,17 @@
 package in.riido.locksmith.template;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
+import in.riido.locksmith.support.SemaphoreInitializer;
 import in.riido.locksmith.template.callback.SemaphoreCallback;
 import in.riido.locksmith.template.handle.PermitHandle;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.redisson.api.RBucket;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
@@ -74,17 +73,11 @@ import org.slf4j.LoggerFactory;
 public class LocksmithSemaphoreTemplate {
 
   private static final Logger LOG = LoggerFactory.getLogger(LocksmithSemaphoreTemplate.class);
-  private static final String META_SUFFIX = ":meta";
 
   private final RedissonClient redissonClient;
   private final SemaphoreProperties semaphoreProperties;
   @Nullable private final SemaphoreMetrics semaphoreMetrics;
-
-  /** Cache to track which keys have been initialized in Redis by this JVM. */
-  private final Map<String, Boolean> initializedKeys = new ConcurrentHashMap<>();
-
-  /** Cache to track permits per key within this JVM for consistency validation. */
-  private final Map<String, Integer> keyToPermits = new ConcurrentHashMap<>();
+  private final SemaphoreInitializer semaphoreInitializer;
 
   /**
    * Constructs a new LocksmithSemaphoreTemplate.
@@ -111,6 +104,7 @@ public class LocksmithSemaphoreTemplate {
     this.redissonClient = redissonClient;
     this.semaphoreProperties = properties.semaphore();
     this.semaphoreMetrics = semaphoreMetrics;
+    this.semaphoreInitializer = new SemaphoreInitializer(redissonClient);
   }
 
   // ========== Builder Entry Point ==========
@@ -185,8 +179,8 @@ public class LocksmithSemaphoreTemplate {
       @NonNull Duration leaseTime,
       boolean immediateMode) {
     String fullKey = semaphoreProperties.keyPrefix() + key;
-    validatePermitsConsistency(fullKey, permits);
-    ensureSemaphoreInitialized(fullKey, permits);
+    semaphoreInitializer.validatePermitsConsistency(fullKey, permits, null);
+    semaphoreInitializer.ensureInitialized(fullKey, permits);
 
     RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(fullKey);
     long startTime = System.currentTimeMillis();
@@ -203,8 +197,8 @@ public class LocksmithSemaphoreTemplate {
         return PermitHandle.acquired(permitId, semaphore, fullKey, semaphoreMetrics);
       } else {
         if (semaphoreMetrics != null) {
-          String reason = immediateMode ? "immediate" : "timeout";
-          semaphoreMetrics.recordSkipped(reason);
+          semaphoreMetrics.recordSkipped(
+              immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP);
         }
         LOG.debug("Failed to acquire permit from semaphore [{}]", fullKey);
         return PermitHandle.notAcquired();
@@ -212,8 +206,8 @@ public class LocksmithSemaphoreTemplate {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       if (semaphoreMetrics != null) {
-        String reason = immediateMode ? "immediate" : "timeout";
-        semaphoreMetrics.recordSkipped(reason);
+        semaphoreMetrics.recordSkipped(
+            immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP);
       }
       LOG.warn("Thread interrupted while waiting for permit from [{}]", fullKey);
       return PermitHandle.notAcquired();
@@ -240,79 +234,6 @@ public class LocksmithSemaphoreTemplate {
       LOG.debug(
           "Permit [{}] acquired from [{}] for callback execution", handle.permitId(), fullKey);
       return callback.execute();
-    }
-  }
-
-  /**
-   * Ensures the semaphore is initialized in Redis with the configured permits.
-   *
-   * <p>Uses metadata storage to detect and warn about permit mismatches across deployments. This
-   * method is thread-safe and will only initialize each semaphore once per JVM.
-   *
-   * @param fullKey the full semaphore key including prefix
-   * @param permits the number of permits to initialize with
-   */
-  private void ensureSemaphoreInitialized(@NonNull String fullKey, int permits) {
-    if (initializedKeys.containsKey(fullKey)) {
-      return;
-    }
-
-    String metaKey = fullKey + META_SUFFIX;
-    RBucket<Integer> metaBucket = redissonClient.getBucket(metaKey);
-    RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(fullKey);
-
-    Integer existingPermits = metaBucket.get();
-
-    if (existingPermits == null) {
-      boolean created = semaphore.trySetPermits(permits);
-      if (created) {
-        metaBucket.set(permits);
-        LOG.info("Created semaphore [{}] with {} permits", fullKey, permits);
-      } else {
-        existingPermits = metaBucket.get();
-        if (existingPermits != null && existingPermits != permits) {
-          LOG.warn(
-              "Semaphore [{}] was created by another instance with {} permits, "
-                  + "but this instance configured {} permits. Using existing value. "
-                  + "To change: delete Redis keys '{}' and '{}', then restart.",
-              fullKey,
-              existingPermits,
-              permits,
-              fullKey,
-              metaKey);
-        }
-      }
-    } else if (existingPermits != permits) {
-      LOG.warn(
-          "Semaphore [{}] exists with {} permits, but this instance configured {} permits. "
-              + "Using existing value. To change: delete Redis keys '{}' and '{}', then restart.",
-          fullKey,
-          existingPermits,
-          permits,
-          fullKey,
-          metaKey);
-    }
-
-    initializedKeys.put(fullKey, Boolean.TRUE);
-  }
-
-  /**
-   * Validates that the same semaphore key is not used with different permits values within this
-   * JVM.
-   *
-   * @param fullKey the full semaphore key including prefix
-   * @param permits the number of permits configured for this call
-   * @throws SemaphoreConfigurationException if the key is used with inconsistent permit counts
-   */
-  private void validatePermitsConsistency(@NonNull String fullKey, int permits) {
-    Integer existingPermits = keyToPermits.putIfAbsent(fullKey, permits);
-    if (existingPermits != null && existingPermits != permits) {
-      throw new SemaphoreConfigurationException(
-          String.format(
-              "Semaphore key '%s' is used with inconsistent permits: %d (existing) vs %d (current). "
-                  + "Each key must have the same permits across all usages.",
-              fullKey, existingPermits, permits),
-          fullKey);
     }
   }
 

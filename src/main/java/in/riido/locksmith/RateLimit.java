@@ -156,8 +156,11 @@ public @interface RateLimit {
   /**
    * Custom handler for rate limit exceeded scenarios.
    *
-   * <p>The handler must have a public no-argument constructor or be defined as a Spring bean.
-   * Built-in handlers:
+   * <p>Handlers can be defined as Spring beans (with dependency injection support) or as plain
+   * classes with a public no-argument constructor. Spring beans are looked up first by type, then
+   * reflection-based instantiation is used as a fallback.
+   *
+   * <p>Built-in handlers:
    *
    * <ul>
    *   <li>{@link RateLimitThrowExceptionHandler} (default): Throws {@link

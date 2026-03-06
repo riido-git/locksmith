@@ -2,6 +2,7 @@ package in.riido.locksmith.metrics;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import in.riido.locksmith.AcquisitionMode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -66,7 +67,7 @@ class SemaphoreMetricsTest {
     @Test
     @DisplayName("Should increment skipped counter with correct reason - timeout")
     void shouldIncrementSkippedCounterWithTimeoutReason() {
-      semaphoreMetrics.recordSkipped("timeout");
+      semaphoreMetrics.recordSkipped(AcquisitionMode.WAIT_AND_SKIP);
 
       Counter counter =
           registry.find("locksmith.semaphore.skipped").tag("reason", "timeout").counter();
@@ -76,7 +77,7 @@ class SemaphoreMetricsTest {
     @Test
     @DisplayName("Should increment skipped counter with correct reason - immediate")
     void shouldIncrementSkippedCounterWithImmediateReason() {
-      semaphoreMetrics.recordSkipped("immediate");
+      semaphoreMetrics.recordSkipped(AcquisitionMode.SKIP_IMMEDIATELY);
 
       Counter counter =
           registry.find("locksmith.semaphore.skipped").tag("reason", "immediate").counter();

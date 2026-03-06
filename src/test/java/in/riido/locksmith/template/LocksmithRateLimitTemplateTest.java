@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.metrics.RateLimitMetrics;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RBucket;
 import org.redisson.api.RRateLimiter;
 import org.redisson.api.RedissonClient;
 
@@ -26,6 +28,10 @@ class LocksmithRateLimitTemplateTest {
   @Mock private RedissonClient redissonClient;
   @Mock private RRateLimiter rateLimiter;
   @Mock private RateLimitMetrics metrics;
+
+  @SuppressWarnings("rawtypes")
+  @Mock
+  private RBucket metaBucket;
 
   private LocksmithRateLimitTemplate template;
   private LocksmithProperties properties;
@@ -38,6 +44,7 @@ class LocksmithRateLimitTemplateTest {
             null,
             new LocksmithProperties.RateLimitProperties(
                 true, Duration.ofMinutes(1), "ratelimit:", false, false));
+    lenient().when(redissonClient.getBucket(anyString())).thenReturn(metaBucket);
     template = new LocksmithRateLimitTemplate(redissonClient, properties);
   }
 
@@ -253,7 +260,7 @@ class LocksmithRateLimitTemplateTest {
 
       template.withKey("test-key").tryAcquire();
 
-      verify(metrics).recordExceeded("immediate");
+      verify(metrics).recordExceeded(AcquisitionMode.SKIP_IMMEDIATELY);
     }
   }
 

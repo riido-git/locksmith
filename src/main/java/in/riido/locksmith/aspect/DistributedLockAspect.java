@@ -10,6 +10,7 @@ import in.riido.locksmith.exception.LeaseExpiredException;
 import in.riido.locksmith.handler.LockSkipHandler;
 import in.riido.locksmith.metrics.LockMetrics;
 import in.riido.locksmith.models.LockContext;
+import in.riido.locksmith.support.AspectSupport;
 import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
@@ -26,9 +27,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -101,8 +100,8 @@ public class DistributedLockAspect {
   public Object handleDistributedLock(@NonNull ProceedingJoinPoint joinPoint) throws Throwable {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedLock annotation = signature.getMethod().getAnnotation(DistributedLock.class);
-    final boolean debugMode = Boolean.TRUE.equals(lockProperties.debug());
-    final String methodName = formatMethodSignature(joinPoint);
+    final boolean debugMode = lockProperties.debug();
+    final String methodName = AspectSupport.formatMethodSignature(joinPoint);
 
     if (annotation.key().isBlank()) {
       throw new IllegalArgumentException(
@@ -160,9 +159,7 @@ public class DistributedLockAspect {
 
       if (!lockAcquired) {
         if (lockMetrics != null) {
-          String reason =
-              annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
-          lockMetrics.recordSkipped(reason);
+          lockMetrics.recordSkipped(annotation.mode());
         }
         if (debugMode) {
           LOG.info(
@@ -224,9 +221,7 @@ public class DistributedLockAspect {
       // Lock acquisition was interrupted
       LOG.warn("Thread interrupted while waiting for lock [{}] in [{}]", lockKey, methodName);
       if (lockMetrics != null) {
-        String reason =
-            annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
-        lockMetrics.recordSkipped(reason);
+        lockMetrics.recordSkipped(annotation.mode());
       }
       return handleSkip(annotation, joinPoint, lockKey, methodName);
     } finally {
@@ -332,105 +327,11 @@ public class DistributedLockAspect {
   }
 
   @NonNull
-  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
-    final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-    return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
-  }
-
-  /**
-   * Gets a cached instance of the specified handler class, creating it if necessary.
-   *
-   * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
-   * instantiation on every lock skip. Handler instances are cached per class type and reused across
-   * all invocations.
-   *
-   * <p>Handler resolution follows this order:
-   *
-   * <ol>
-   *   <li>Look up the handler as a Spring bean from ApplicationContext by type
-   *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
-   * </ol>
-   *
-   * <p>This allows handlers to be defined as Spring beans with dependency injection:
-   *
-   * <pre>{@code
-   * @Component
-   * public class AlertingSkipHandler implements LockSkipHandler {
-   *     private final AlertService alertService;
-   *
-   *     public AlertingSkipHandler(AlertService alertService) {
-   *         this.alertService = alertService;
-   *     }
-   *
-   *     @Override
-   *     public Object handle(LockContext context) {
-   *         alertService.sendAlert("Lock failed: " + context.lockKey());
-   *         return null;
-   *     }
-   * }
-   * }</pre>
-   *
-   * <p><b>Important:</b> Handler classes must be stateless and thread-safe, as a single instance
-   * will be shared across all concurrent invocations.
-   *
-   * @param handlerClass the handler class to instantiate
-   * @return a cached or newly created instance of the handler
-   * @throws IllegalStateException if the handler cannot be instantiated
-   */
-  @NonNull
   private LockSkipHandler getHandlerInstance(
       @NonNull Class<? extends LockSkipHandler> handlerClass) {
     return handlerCache.computeIfAbsent(
         handlerClass,
-        clazz -> {
-          // First, try to get the handler as a Spring bean (only if context is active)
-          if (isApplicationContextActive()) {
-            try {
-              LockSkipHandler bean = applicationContext.getBean(clazz);
-              if (bean != null) {
-                return bean;
-              }
-            } catch (BeansException ignored) {
-              // Bean not found, will fall back to reflection
-            }
-          } else {
-            if (Boolean.TRUE.equals(lockProperties.debug())) {
-              LOG.info(
-                  "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
-                  clazz.getName());
-            }
-          }
-          // Not a Spring bean, fall back to reflection
-          if (Boolean.TRUE.equals(lockProperties.debug())) {
-            LOG.info(
-                "Handler {} not found as Spring bean, falling back to reflection-based instantiation",
-                clazz.getName());
-          }
-
-          // Fall back to reflection-based instantiation
-          try {
-            return clazz.getDeclaredConstructor().newInstance();
-          } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(
-                "Failed to instantiate skip handler: "
-                    + clazz.getName()
-                    + ". Ensure it is a Spring bean or has a public no-argument constructor.",
-                e);
-          }
-        });
-  }
-
-  /**
-   * Checks if the application context is active and can be used for bean lookups.
-   *
-   * @return true if the context is active, false otherwise
-   */
-  private boolean isApplicationContextActive() {
-    if (applicationContext instanceof ConfigurableApplicationContext configurableContext) {
-      return configurableContext.isActive();
-    }
-    // For non-configurable contexts, assume active
-    return true;
+        clazz -> AspectSupport.resolveHandler(clazz, applicationContext, lockProperties.debug()));
   }
 
   @Nullable

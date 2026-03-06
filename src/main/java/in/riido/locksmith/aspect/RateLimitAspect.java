@@ -8,6 +8,7 @@ import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.handler.RateLimitSkipHandler;
 import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.models.RateLimitContext;
+import in.riido.locksmith.support.AspectSupport;
 import in.riido.locksmith.support.DurationResolver;
 import in.riido.locksmith.support.RateLimitConfig;
 import in.riido.locksmith.support.SpELKeyResolver;
@@ -26,9 +27,7 @@ import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -107,7 +106,7 @@ public class RateLimitAspect {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final RateLimit annotation = signature.getMethod().getAnnotation(RateLimit.class);
     final boolean debugMode = rateLimitProperties.debug();
-    final String methodName = formatMethodSignature(joinPoint);
+    final String methodName = AspectSupport.formatMethodSignature(joinPoint);
 
     // Validate key is not blank
     if (annotation.key().isBlank()) {
@@ -168,9 +167,7 @@ public class RateLimitAspect {
 
     if (!permitAcquired) {
       if (rateLimitMetrics != null) {
-        String reason =
-            annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
-        rateLimitMetrics.recordExceeded(reason);
+        rateLimitMetrics.recordExceeded(annotation.mode());
       }
       if (debugMode) {
         LOG.info(
@@ -262,10 +259,7 @@ public class RateLimitAspect {
 
     if (existingRedisConfig == null) {
       // First time - create rate limiter and metadata
-      RateType redissonRateType =
-          rateType == RateType.OVERALL ? RateType.OVERALL : RateType.PER_CLIENT;
-
-      boolean created = rateLimiter.trySetRate(redissonRateType, permits, interval);
+      boolean created = rateLimiter.trySetRate(rateType, permits, interval);
 
       if (created) {
         metaBucket.set(newConfig);
@@ -324,83 +318,12 @@ public class RateLimitAspect {
   }
 
   @NonNull
-  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
-    final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-    return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
-  }
-
-  /**
-   * Gets a cached instance of the specified handler class, creating it if necessary.
-   *
-   * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
-   * instantiation on every rate limit breach. Handler instances are cached per class type and
-   * reused across all invocations.
-   *
-   * <p>Handler resolution follows this order:
-   *
-   * <ol>
-   *   <li>Look up the handler as a Spring bean from ApplicationContext by type
-   *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
-   * </ol>
-   *
-   * @param handlerClass the handler class to instantiate
-   * @return a cached or newly created instance of the handler
-   * @throws IllegalStateException if the handler cannot be instantiated
-   */
-  @NonNull
   private RateLimitSkipHandler getHandlerInstance(
       @NonNull Class<? extends RateLimitSkipHandler> handlerClass) {
     return handlerCache.computeIfAbsent(
         handlerClass,
-        clazz -> {
-          // First, try to get the handler as a Spring bean (only if context is active)
-          if (isApplicationContextActive()) {
-            try {
-              RateLimitSkipHandler bean = applicationContext.getBean(clazz);
-              if (bean != null) {
-                return bean;
-              }
-            } catch (BeansException ignored) {
-              // Bean not found, will fall back to reflection
-            }
-          } else {
-            if (rateLimitProperties.debug()) {
-              LOG.info(
-                  "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
-                  clazz.getName());
-            }
-          }
-          // Not a Spring bean, fall back to reflection
-          if (rateLimitProperties.debug()) {
-            LOG.info(
-                "Handler {} not found as Spring bean, falling back to reflection-based instantiation",
-                clazz.getName());
-          }
-
-          // Fall back to reflection-based instantiation
-          try {
-            return clazz.getDeclaredConstructor().newInstance();
-          } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(
-                "Failed to instantiate skip handler: "
-                    + clazz.getName()
-                    + ". Ensure it is a Spring bean or has a public no-argument constructor.",
-                e);
-          }
-        });
-  }
-
-  /**
-   * Checks if the application context is active and can be used for bean lookups.
-   *
-   * @return true if the context is active, false otherwise
-   */
-  private boolean isApplicationContextActive() {
-    if (applicationContext instanceof ConfigurableApplicationContext configurableContext) {
-      return configurableContext.isActive();
-    }
-    // For non-configurable contexts, assume active
-    return true;
+        clazz ->
+            AspectSupport.resolveHandler(clazz, applicationContext, rateLimitProperties.debug()));
   }
 
   @Nullable

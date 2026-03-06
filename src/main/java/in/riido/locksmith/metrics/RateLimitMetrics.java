@@ -1,5 +1,6 @@
 package in.riido.locksmith.metrics;
 
+import in.riido.locksmith.AcquisitionMode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -45,13 +46,13 @@ public class RateLimitMetrics {
 
     this.exceededTimeout =
         Counter.builder(PREFIX + "exceeded")
-            .tag("reason", "timeout")
+            .tag("reason", AcquisitionMode.WAIT_AND_SKIP.metricsReason())
             .description("Number of rate limits exceeded after timeout")
             .register(registry);
 
     this.exceededImmediate =
         Counter.builder(PREFIX + "exceeded")
-            .tag("reason", "immediate")
+            .tag("reason", AcquisitionMode.SKIP_IMMEDIATELY.metricsReason())
             .description("Number of rate limits exceeded immediately (no wait)")
             .register(registry);
 
@@ -74,11 +75,10 @@ public class RateLimitMetrics {
   /**
    * Records a rate limit exceeded event.
    *
-   * @param reason the reason for exceeding: "timeout" for WAIT_AND_SKIP mode or "immediate" for
-   *     SKIP_IMMEDIATELY mode
+   * @param reason the acquisition mode indicating the reason for exceeding
    */
-  public void recordExceeded(@NonNull String reason) {
-    if ("timeout".equals(reason)) {
+  public void recordExceeded(@NonNull AcquisitionMode reason) {
+    if (AcquisitionMode.WAIT_AND_SKIP.equals(reason)) {
       exceededTimeout.increment();
     } else {
       exceededImmediate.increment();

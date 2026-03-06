@@ -1,5 +1,6 @@
 package in.riido.locksmith.metrics;
 
+import in.riido.locksmith.AcquisitionMode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -46,13 +47,13 @@ public class SemaphoreMetrics {
 
     this.skippedTimeout =
         Counter.builder(PREFIX + "skipped")
-            .tag("reason", "timeout")
+            .tag("reason", AcquisitionMode.WAIT_AND_SKIP.metricsReason())
             .description("Number of permit acquisitions skipped due to timeout")
             .register(registry);
 
     this.skippedImmediate =
         Counter.builder(PREFIX + "skipped")
-            .tag("reason", "immediate")
+            .tag("reason", AcquisitionMode.SKIP_IMMEDIATELY.metricsReason())
             .description("Number of permit acquisitions skipped immediately (no wait)")
             .register(registry);
 
@@ -80,11 +81,10 @@ public class SemaphoreMetrics {
   /**
    * Records a skipped permit acquisition.
    *
-   * @param reason the reason for skipping: "timeout" for WAIT_AND_SKIP mode, "immediate" for
-   *     SKIP_IMMEDIATELY mode
+   * @param reason the acquisition mode indicating the reason for skipping
    */
-  public void recordSkipped(@NonNull String reason) {
-    if ("timeout".equals(reason)) {
+  public void recordSkipped(@NonNull AcquisitionMode reason) {
+    if (AcquisitionMode.WAIT_AND_SKIP.equals(reason)) {
       skippedTimeout.increment();
     } else {
       skippedImmediate.increment();

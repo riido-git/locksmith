@@ -1,5 +1,6 @@
 package in.riido.locksmith.template;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.LockType;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.LockProperties;
@@ -207,7 +208,8 @@ public class LocksmithLockTemplate {
         return LockHandle.acquired(lock, fullKey, lockMetrics);
       } else {
         if (lockMetrics != null) {
-          String reason = immediateMode ? "immediate" : "timeout";
+          final var reason =
+              immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP;
           lockMetrics.recordSkipped(reason);
         }
         LOG.debug("Failed to acquire lock [{}] with type={}", fullKey, lockType);
@@ -216,7 +218,8 @@ public class LocksmithLockTemplate {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       if (lockMetrics != null) {
-        String reason = immediateMode ? "immediate" : "timeout";
+        final var reason =
+            immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP;
         lockMetrics.recordSkipped(reason);
       }
       LOG.warn("Thread interrupted while waiting for lock [{}]", fullKey);

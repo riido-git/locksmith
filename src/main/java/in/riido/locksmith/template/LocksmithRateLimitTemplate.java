@@ -1,5 +1,6 @@
 package in.riido.locksmith.template;
 
+import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
 import in.riido.locksmith.exception.RateLimitConfigurationException;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.redisson.api.RBucket;
 import org.redisson.api.RRateLimiter;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
@@ -74,6 +76,7 @@ public class LocksmithRateLimitTemplate {
 
   private static final long DEFAULT_PERMITS = 10;
   private static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(1);
+  private static final String META_SUFFIX = ":rate-meta";
 
   private final RedissonClient redissonClient;
   private final RateLimitProperties rateLimitProperties;
@@ -164,8 +167,8 @@ public class LocksmithRateLimitTemplate {
       LOG.debug("Rate limit permit acquired for [{}]", fullKey);
     } else {
       if (rateLimitMetrics != null) {
-        String reason = immediateMode ? "immediate" : "timeout";
-        rateLimitMetrics.recordExceeded(reason);
+        rateLimitMetrics.recordExceeded(
+            immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP);
       }
       LOG.debug("Rate limit exceeded for [{}]", fullKey);
     }
@@ -195,8 +198,8 @@ public class LocksmithRateLimitTemplate {
 
     if (!acquired) {
       if (rateLimitMetrics != null) {
-        String reason = immediateMode ? "immediate" : "timeout";
-        rateLimitMetrics.recordExceeded(reason);
+        rateLimitMetrics.recordExceeded(
+            immediateMode ? AcquisitionMode.SKIP_IMMEDIATELY : AcquisitionMode.WAIT_AND_SKIP);
       }
       LOG.debug("Rate limit exceeded for [{}], callback not executed", fullKey);
       return null;
@@ -219,7 +222,8 @@ public class LocksmithRateLimitTemplate {
   }
 
   /**
-   * Gets or creates a rate limiter in Redis with the configured rate.
+   * Gets or creates a rate limiter in Redis with the configured rate. Uses metadata storage to
+   * detect and warn about configuration mismatches across deployments.
    *
    * <p>This method is thread-safe and will only initialize each rate limiter once per JVM. It also
    * validates that the same key is not used with different configurations within this JVM.
@@ -253,23 +257,50 @@ public class LocksmithRateLimitTemplate {
       return rateLimiter;
     }
 
-    RateType redissonRateType =
-        rateType == RateType.OVERALL ? RateType.OVERALL : RateType.PER_CLIENT;
+    String metaKey = fullKey + META_SUFFIX;
+    RBucket<RateLimitConfig> metaBucket = redissonClient.getBucket(metaKey);
 
-    boolean created = rateLimiter.trySetRate(redissonRateType, permits, interval);
+    RateLimitConfig existingRedisConfig = metaBucket.get();
 
-    if (created) {
-      LOG.info(
-          "Created rate limiter [{}] with permits={}, interval={}, type={}",
+    if (existingRedisConfig == null) {
+      boolean created = rateLimiter.trySetRate(rateType, permits, interval);
+
+      if (created) {
+        metaBucket.set(newConfig);
+        LOG.info(
+            "Created rate limiter [{}] with permits={}, interval={}, type={}",
+            fullKey,
+            permits,
+            interval,
+            rateType);
+      } else {
+        // Race condition: another instance created it between our check and set
+        existingRedisConfig = metaBucket.get();
+        if (existingRedisConfig != null && !existingRedisConfig.equals(newConfig)) {
+          LOG.warn(
+              "Rate limiter [{}] was created by another instance with different settings: "
+                  + "existing={}, this={}. Using existing configuration. "
+                  + "To change: delete Redis keys '{}' and '{}', then redeploy all instances.",
+              fullKey,
+              existingRedisConfig,
+              newConfig,
+              fullKey,
+              metaKey);
+        }
+      }
+    } else if (!existingRedisConfig.equals(newConfig)) {
+      LOG.warn(
+          "Rate limiter [{}] exists with different settings: existing={}, this={}. "
+              + "Using existing configuration. To change: delete Redis keys '{}' and '{}', "
+              + "then redeploy all instances.",
           fullKey,
-          permits,
-          interval,
-          rateType);
-    } else {
-      LOG.debug("Rate limiter [{}] already exists, using existing configuration", fullKey);
+          existingRedisConfig,
+          newConfig,
+          fullKey,
+          metaKey);
     }
 
-    initializedConfigs.put(fullKey, newConfig);
+    initializedConfigs.put(fullKey, existingRedisConfig != null ? existingRedisConfig : newConfig);
     return rateLimiter;
   }
 

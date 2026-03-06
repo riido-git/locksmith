@@ -2,6 +2,7 @@ package in.riido.locksmith.metrics;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import in.riido.locksmith.AcquisitionMode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -57,7 +58,7 @@ class RateLimitMetricsTest {
     @Test
     @DisplayName("Should record exceeded counter with immediate reason")
     void shouldRecordExceededCounterWithImmediateReason() {
-      metrics.recordExceeded("immediate");
+      metrics.recordExceeded(AcquisitionMode.SKIP_IMMEDIATELY);
 
       Counter counter =
           meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
@@ -68,7 +69,7 @@ class RateLimitMetricsTest {
     @Test
     @DisplayName("Should record exceeded counter with timeout reason")
     void shouldRecordExceededCounterWithTimeoutReason() {
-      metrics.recordExceeded("timeout");
+      metrics.recordExceeded(AcquisitionMode.WAIT_AND_SKIP);
 
       Counter counter =
           meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "timeout").counter();
@@ -77,23 +78,11 @@ class RateLimitMetricsTest {
     }
 
     @Test
-    @DisplayName("Should use immediate counter for non-timeout reason")
-    void shouldUseImmediateCounterForNonTimeoutReason() {
-      // Any reason other than "timeout" should use the immediate counter
-      metrics.recordExceeded("interrupted");
-
-      Counter counter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
-      assertNotNull(counter);
-      assertEquals(1, counter.count());
-    }
-
-    @Test
     @DisplayName("Should track different reasons separately")
     void shouldTrackDifferentReasonsSeparately() {
-      metrics.recordExceeded("immediate");
-      metrics.recordExceeded("immediate");
-      metrics.recordExceeded("timeout");
+      metrics.recordExceeded(AcquisitionMode.SKIP_IMMEDIATELY);
+      metrics.recordExceeded(AcquisitionMode.SKIP_IMMEDIATELY);
+      metrics.recordExceeded(AcquisitionMode.WAIT_AND_SKIP);
 
       Counter immediateCounter =
           meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
@@ -102,17 +91,6 @@ class RateLimitMetricsTest {
 
       assertEquals(2, immediateCounter.count());
       assertEquals(1, timeoutCounter.count());
-    }
-
-    @Test
-    @DisplayName("Should use immediate counter for unknown reason")
-    void shouldUseImmediateCounterForUnknownReason() {
-      metrics.recordExceeded("unknown");
-
-      Counter counter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
-      assertNotNull(counter);
-      assertEquals(1, counter.count());
     }
   }
 

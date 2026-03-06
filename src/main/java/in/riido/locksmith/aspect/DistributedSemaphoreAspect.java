@@ -10,7 +10,9 @@ import in.riido.locksmith.exception.SemaphoreLeaseExpiredException;
 import in.riido.locksmith.handler.SemaphoreSkipHandler;
 import in.riido.locksmith.metrics.SemaphoreMetrics;
 import in.riido.locksmith.models.SemaphoreContext;
+import in.riido.locksmith.support.AspectSupport;
 import in.riido.locksmith.support.DurationResolver;
+import in.riido.locksmith.support.SemaphoreInitializer;
 import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
@@ -22,14 +24,11 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.redisson.api.RBucket;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 
@@ -49,13 +48,8 @@ import org.springframework.core.annotation.Order;
 public class DistributedSemaphoreAspect {
 
   private static final Logger LOG = LoggerFactory.getLogger(DistributedSemaphoreAspect.class);
-  private static final String META_SUFFIX = ":meta";
 
-  /** Cache to track permits per key within this JVM for consistency validation. */
-  private final Map<String, Integer> keyToPermits = new ConcurrentHashMap<>();
-
-  /** Cache to track which keys have been initialized in Redis by this JVM. */
-  private final Map<String, Boolean> initializedKeys = new ConcurrentHashMap<>();
+  private final SemaphoreInitializer semaphoreInitializer;
 
   /** Cache of handler instances per class type for reuse. */
   private final Map<Class<? extends SemaphoreSkipHandler>, SemaphoreSkipHandler> handlerCache =
@@ -97,6 +91,7 @@ public class DistributedSemaphoreAspect {
     this.semaphoreProperties = properties.semaphore();
     this.applicationContext = applicationContext;
     this.semaphoreMetrics = semaphoreMetrics;
+    this.semaphoreInitializer = new SemaphoreInitializer(redissonClient);
   }
 
   /**
@@ -113,8 +108,8 @@ public class DistributedSemaphoreAspect {
     final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
     final DistributedSemaphore annotation =
         signature.getMethod().getAnnotation(DistributedSemaphore.class);
-    final boolean debugMode = Boolean.TRUE.equals(semaphoreProperties.debug());
-    final String methodName = formatMethodSignature(joinPoint);
+    final boolean debugMode = semaphoreProperties.debug();
+    final String methodName = AspectSupport.formatMethodSignature(joinPoint);
 
     // Validate key is not blank
     if (annotation.key().isBlank()) {
@@ -139,10 +134,10 @@ public class DistributedSemaphoreAspect {
     final int permits = annotation.permits();
 
     // Validate consistency: same key must have same permits within this codebase
-    validatePermitsConsistency(semaphoreKey, permits, methodName);
+    semaphoreInitializer.validatePermitsConsistency(semaphoreKey, permits, methodName);
 
     // Initialize semaphore in Redis (first time only per key per JVM)
-    ensureSemaphoreInitialized(semaphoreKey, permits);
+    semaphoreInitializer.ensureInitialized(semaphoreKey, permits);
 
     final RPermitExpirableSemaphore semaphore =
         redissonClient.getPermitExpirableSemaphore(semaphoreKey);
@@ -171,9 +166,7 @@ public class DistributedSemaphoreAspect {
 
       if (permitId == null) {
         if (semaphoreMetrics != null) {
-          String reason =
-              annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
-          semaphoreMetrics.recordSkipped(reason);
+          semaphoreMetrics.recordSkipped(annotation.mode());
         }
         if (debugMode) {
           LOG.info(
@@ -232,9 +225,7 @@ public class DistributedSemaphoreAspect {
           semaphoreKey,
           methodName);
       if (semaphoreMetrics != null) {
-        String reason =
-            annotation.mode() == AcquisitionMode.SKIP_IMMEDIATELY ? "immediate" : "timeout";
-        semaphoreMetrics.recordSkipped(reason);
+        semaphoreMetrics.recordSkipped(annotation.mode());
       }
       return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
     } finally {
@@ -242,91 +233,6 @@ public class DistributedSemaphoreAspect {
         releasePermit(semaphore, permitId, semaphoreKey, methodName);
       }
     }
-  }
-
-  /**
-   * Validates that the same semaphore key is not used with different permits values within this
-   * codebase.
-   */
-  private void validatePermitsConsistency(
-      @NonNull String semaphoreKey, int permits, @NonNull String methodName) {
-    Integer existingPermits = keyToPermits.putIfAbsent(semaphoreKey, permits);
-    if (existingPermits != null && existingPermits != permits) {
-      throw new SemaphoreConfigurationException(
-          String.format(
-              "Semaphore key '%s' is used with inconsistent permits: %d (existing) vs %d (in %s). "
-                  + "Each key must have the same permits across all usages.",
-              semaphoreKey, existingPermits, permits, methodName),
-          semaphoreKey);
-    }
-  }
-
-  /**
-   * Ensures the semaphore is initialized in Redis with the configured permits. Uses metadata
-   * storage to detect and warn about permit mismatches across deployments.
-   *
-   * <p><b>Race Condition Note:</b> There is a small race window between {@code trySetPermits} and
-   * {@code metaBucket.set} where another instance could read null from the metadata bucket. This is
-   * acceptable because:
-   *
-   * <ul>
-   *   <li>Redisson's {@code trySetPermits} is itself atomic - only one instance will successfully
-   *       create the semaphore
-   *   <li>The metadata is only used for logging warnings about permit mismatches
-   *   <li>Worst case: duplicate "created semaphore" log messages on first initialization
-   *   <li>The semaphore's actual permit count in Redis is always correct
-   * </ul>
-   *
-   * <p>A fully atomic solution would require a Lua script, but the added complexity is not
-   * justified for this edge case that only affects logging during first initialization.
-   */
-  private void ensureSemaphoreInitialized(@NonNull String semaphoreKey, int permits) {
-    if (initializedKeys.containsKey(semaphoreKey)) {
-      return; // Already initialized by this JVM
-    }
-
-    String metaKey = semaphoreKey + META_SUFFIX;
-    RBucket<Integer> metaBucket = redissonClient.getBucket(metaKey);
-    RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(semaphoreKey);
-
-    Integer existingPermits = metaBucket.get();
-
-    if (existingPermits == null) {
-      // First time - create semaphore and metadata
-      boolean created = semaphore.trySetPermits(permits);
-      if (created) {
-        metaBucket.set(permits);
-        LOG.info("Created semaphore [{}] with {} permits", semaphoreKey, permits);
-      } else {
-        // Race condition: another instance created it between our check and set
-        // Read the actual value and warn if different
-        existingPermits = metaBucket.get();
-        if (existingPermits != null && existingPermits != permits) {
-          LOG.warn(
-              "Semaphore [{}] was created by another instance with {} permits, "
-                  + "but this instance configured {} permits. Using existing value. "
-                  + "To change: delete Redis keys '{}' and '{}', then redeploy all instances.",
-              semaphoreKey,
-              existingPermits,
-              permits,
-              semaphoreKey,
-              metaKey);
-        }
-      }
-    } else if (existingPermits != permits) {
-      // Semaphore exists with different permits
-      LOG.warn(
-          "Semaphore [{}] exists with {} permits, but this instance configured {} permits. "
-              + "Using existing value. To change: delete Redis keys '{}' and '{}', "
-              + "then redeploy all instances.",
-          semaphoreKey,
-          existingPermits,
-          permits,
-          semaphoreKey,
-          metaKey);
-    }
-
-    initializedKeys.put(semaphoreKey, Boolean.TRUE);
   }
 
   /**
@@ -414,105 +320,12 @@ public class DistributedSemaphoreAspect {
   }
 
   @NonNull
-  private String formatMethodSignature(@NonNull ProceedingJoinPoint joinPoint) {
-    final MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-    return signature.getDeclaringType().getSimpleName() + "." + signature.getName();
-  }
-
-  /**
-   * Gets a cached instance of the specified handler class, creating it if necessary.
-   *
-   * <p>This method provides thread-safe caching of handler instances to avoid the overhead of
-   * instantiation on every permit skip. Handler instances are cached per class type and reused
-   * across all invocations.
-   *
-   * <p>Handler resolution follows this order:
-   *
-   * <ol>
-   *   <li>Look up the handler as a Spring bean from ApplicationContext by type
-   *   <li>Fall back to reflection-based instantiation (requires public no-arg constructor)
-   * </ol>
-   *
-   * <p>This allows handlers to be defined as Spring beans with dependency injection:
-   *
-   * <pre>{@code
-   * @Component
-   * public class AlertingSemaphoreHandler implements SemaphoreSkipHandler {
-   *     private final AlertService alertService;
-   *
-   *     public AlertingSemaphoreHandler(AlertService alertService) {
-   *         this.alertService = alertService;
-   *     }
-   *
-   *     @Override
-   *     public Object handle(SemaphoreContext context) {
-   *         alertService.sendAlert("Permit failed: " + context.semaphoreKey());
-   *         return null;
-   *     }
-   * }
-   * }</pre>
-   *
-   * <p><b>Important:</b> Handler classes must be stateless and thread-safe, as a single instance
-   * will be shared across all concurrent invocations.
-   *
-   * @param handlerClass the handler class to instantiate
-   * @return a cached or newly created instance of the handler
-   * @throws IllegalStateException if the handler cannot be instantiated
-   */
-  @NonNull
   private SemaphoreSkipHandler getHandlerInstance(
       @NonNull Class<? extends SemaphoreSkipHandler> handlerClass) {
     return handlerCache.computeIfAbsent(
         handlerClass,
-        clazz -> {
-          // First, try to get the handler as a Spring bean (only if context is active)
-          if (isApplicationContextActive()) {
-            try {
-              SemaphoreSkipHandler bean = applicationContext.getBean(clazz);
-              if (bean != null) {
-                return bean;
-              }
-            } catch (BeansException ignored) {
-              // Bean not found, will fall back to reflection
-            }
-          } else {
-            if (Boolean.TRUE.equals(semaphoreProperties.debug())) {
-              LOG.info(
-                  "ApplicationContext is not active, skipping Spring bean lookup for handler: {}",
-                  clazz.getName());
-            }
-          }
-          // Not a Spring bean, fall back to reflection
-          if (Boolean.TRUE.equals(semaphoreProperties.debug())) {
-            LOG.info(
-                "Handler {} not found as Spring bean, falling back to reflection-based instantiation",
-                clazz.getName());
-          }
-
-          // Fall back to reflection-based instantiation
-          try {
-            return clazz.getDeclaredConstructor().newInstance();
-          } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(
-                "Failed to instantiate skip handler: "
-                    + clazz.getName()
-                    + ". Ensure it is a Spring bean or has a public no-argument constructor.",
-                e);
-          }
-        });
-  }
-
-  /**
-   * Checks if the application context is active and can be used for bean lookups.
-   *
-   * @return true if the context is active, false otherwise
-   */
-  private boolean isApplicationContextActive() {
-    if (applicationContext instanceof ConfigurableApplicationContext configurableContext) {
-      return configurableContext.isActive();
-    }
-    // For non-configurable contexts, assume active
-    return true;
+        clazz ->
+            AspectSupport.resolveHandler(clazz, applicationContext, semaphoreProperties.debug()));
   }
 
   @Nullable
