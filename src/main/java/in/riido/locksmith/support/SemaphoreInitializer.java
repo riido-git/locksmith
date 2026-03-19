@@ -55,6 +55,11 @@ public class SemaphoreInitializer {
 
   private final RedissonClient redissonClient;
 
+  /**
+   * Creates a new {@code SemaphoreInitializer} with the given Redisson client.
+   *
+   * @param redissonClient the Redisson client used for Redis operations
+   */
   public SemaphoreInitializer(@NonNull RedissonClient redissonClient) {
     this.redissonClient = redissonClient;
   }
@@ -89,8 +94,7 @@ public class SemaphoreInitializer {
    * @param semaphoreKey the full semaphore key including prefix
    * @param permits the number of permits to initialize with
    */
-  public void ensureInitialized(
-      @NonNull String semaphoreKey, int permits) {
+  public void ensureInitialized(@NonNull String semaphoreKey, int permits) {
     if (initializedKeys.containsKey(semaphoreKey)) {
       return;
     }
