@@ -5,14 +5,11 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.RateLimitProperties;
 import in.riido.locksmith.exception.RateLimitConfigurationException;
 import in.riido.locksmith.metrics.RateLimitMetrics;
-import in.riido.locksmith.support.RateLimitConfig;
+import in.riido.locksmith.support.RateLimitInitializer;
 import in.riido.locksmith.template.callback.RateLimitCallback;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.redisson.api.RBucket;
 import org.redisson.api.RRateLimiter;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
@@ -76,14 +73,11 @@ public class LocksmithRateLimitTemplate {
 
   private static final long DEFAULT_PERMITS = 10;
   private static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(1);
-  private static final String META_SUFFIX = ":rate-meta";
 
   private final RedissonClient redissonClient;
   private final RateLimitProperties rateLimitProperties;
   @Nullable private final RateLimitMetrics rateLimitMetrics;
-
-  /** Cache to track rate limiter configurations per key within this JVM. */
-  private final Map<String, RateLimitConfig> initializedConfigs = new ConcurrentHashMap<>();
+  private final RateLimitInitializer rateLimitInitializer;
 
   /**
    * Constructs a new LocksmithRateLimitTemplate.
@@ -110,6 +104,7 @@ public class LocksmithRateLimitTemplate {
     this.redissonClient = redissonClient;
     this.rateLimitProperties = properties.rateLimit();
     this.rateLimitMetrics = rateLimitMetrics;
+    this.rateLimitInitializer = new RateLimitInitializer(redissonClient);
   }
 
   // ========== Builder Entry Point ==========
@@ -153,7 +148,8 @@ public class LocksmithRateLimitTemplate {
     }
 
     String fullKey = rateLimitProperties.keyPrefix() + key;
-    RRateLimiter rateLimiter = getOrCreateRateLimiter(fullKey, permits, interval, rateType);
+    rateLimitInitializer.ensureInitialized(fullKey, permits, interval, rateType);
+    RRateLimiter rateLimiter = redissonClient.getRateLimiter(fullKey);
     long startTime = System.currentTimeMillis();
 
     boolean acquired =
@@ -190,7 +186,8 @@ public class LocksmithRateLimitTemplate {
     }
 
     String fullKey = rateLimitProperties.keyPrefix() + key;
-    RRateLimiter rateLimiter = getOrCreateRateLimiter(fullKey, permits, interval, rateType);
+    rateLimitInitializer.ensureInitialized(fullKey, permits, interval, rateType);
+    RRateLimiter rateLimiter = redissonClient.getRateLimiter(fullKey);
     long acquisitionStartTime = System.currentTimeMillis();
 
     boolean acquired =
@@ -219,89 +216,6 @@ public class LocksmithRateLimitTemplate {
         rateLimitMetrics.recordExecutionTime(System.currentTimeMillis() - executionStartTime);
       }
     }
-  }
-
-  /**
-   * Gets or creates a rate limiter in Redis with the configured rate. Uses metadata storage to
-   * detect and warn about configuration mismatches across deployments.
-   *
-   * <p>This method is thread-safe and will only initialize each rate limiter once per JVM. It also
-   * validates that the same key is not used with different configurations within this JVM.
-   *
-   * @param fullKey the full rate limiter key including prefix
-   * @param permits the number of permits per interval
-   * @param interval the interval duration
-   * @param rateType the rate type (OVERALL or PER_CLIENT)
-   * @return the rate limiter instance
-   */
-  @NonNull
-  private RRateLimiter getOrCreateRateLimiter(
-      @NonNull String fullKey,
-      long permits,
-      @NonNull Duration interval,
-      @NonNull RateType rateType) {
-    RRateLimiter rateLimiter = redissonClient.getRateLimiter(fullKey);
-
-    RateLimitConfig newConfig = new RateLimitConfig(permits, interval.toMillis(), rateType);
-    RateLimitConfig existingConfig = initializedConfigs.get(fullKey);
-
-    if (existingConfig != null) {
-      if (!existingConfig.equals(newConfig)) {
-        LOG.warn(
-            "Rate limiter [{}] is configured with different settings in this JVM: "
-                + "existing={}, new={}. Using existing configuration.",
-            fullKey,
-            existingConfig,
-            newConfig);
-      }
-      return rateLimiter;
-    }
-
-    String metaKey = fullKey + META_SUFFIX;
-    RBucket<RateLimitConfig> metaBucket = redissonClient.getBucket(metaKey);
-
-    RateLimitConfig existingRedisConfig = metaBucket.get();
-
-    if (existingRedisConfig == null) {
-      boolean created = rateLimiter.trySetRate(rateType, permits, interval);
-
-      if (created) {
-        metaBucket.set(newConfig);
-        LOG.info(
-            "Created rate limiter [{}] with permits={}, interval={}, type={}",
-            fullKey,
-            permits,
-            interval,
-            rateType);
-      } else {
-        // Race condition: another instance created it between our check and set
-        existingRedisConfig = metaBucket.get();
-        if (existingRedisConfig != null && !existingRedisConfig.equals(newConfig)) {
-          LOG.warn(
-              "Rate limiter [{}] was created by another instance with different settings: "
-                  + "existing={}, this={}. Using existing configuration. "
-                  + "To change: delete Redis keys '{}' and '{}', then redeploy all instances.",
-              fullKey,
-              existingRedisConfig,
-              newConfig,
-              fullKey,
-              metaKey);
-        }
-      }
-    } else if (!existingRedisConfig.equals(newConfig)) {
-      LOG.warn(
-          "Rate limiter [{}] exists with different settings: existing={}, this={}. "
-              + "Using existing configuration. To change: delete Redis keys '{}' and '{}', "
-              + "then redeploy all instances.",
-          fullKey,
-          existingRedisConfig,
-          newConfig,
-          fullKey,
-          metaKey);
-    }
-
-    initializedConfigs.put(fullKey, existingRedisConfig != null ? existingRedisConfig : newConfig);
-    return rateLimiter;
   }
 
   // ========== Builder Class ==========

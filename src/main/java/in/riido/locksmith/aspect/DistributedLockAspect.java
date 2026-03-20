@@ -152,6 +152,7 @@ public class DistributedLockAspect {
     }
 
     boolean lockAcquired = false;
+    long startTime = 0;
     final long acquisitionStartTime = System.currentTimeMillis();
 
     try {
@@ -186,13 +187,9 @@ public class DistributedLockAspect {
 
       LOG.info("Lock [{}] acquired for [{}]", lockKey, methodName);
 
-      final long startTime = System.currentTimeMillis();
+      startTime = System.currentTimeMillis();
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
-
-      if (lockMetrics != null) {
-        lockMetrics.recordHeldTime(executionTime);
-      }
 
       if (debugMode) {
         LOG.info(
@@ -225,10 +222,13 @@ public class DistributedLockAspect {
       }
       return handleSkip(annotation, joinPoint, lockKey, methodName);
     } finally {
-      if (autoRenew && lockMetrics != null && lockAcquired) {
-        lockMetrics.decrementAutoRenewActive();
-      }
       if (lockAcquired) {
+        if (lockMetrics != null) {
+          lockMetrics.recordHeldTime(System.currentTimeMillis() - startTime);
+        }
+        if (autoRenew && lockMetrics != null) {
+          lockMetrics.decrementAutoRenewActive();
+        }
         releaseLock(lock, lockKey, methodName);
       }
     }

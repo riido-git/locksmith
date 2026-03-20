@@ -34,6 +34,12 @@ public record RateLimitConfig(
    * @param rateType the rate type (OVERALL or PER_CLIENT)
    */
   public RateLimitConfig {
+    if (permits <= 0) {
+      throw new IllegalArgumentException("permits must be positive, got: " + permits);
+    }
+    if (intervalMs <= 0) {
+      throw new IllegalArgumentException("intervalMs must be positive, got: " + intervalMs);
+    }
     Objects.requireNonNull(rateType, "rateType must not be null");
   }
 

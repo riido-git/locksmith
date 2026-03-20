@@ -10,7 +10,7 @@ import in.riido.locksmith.metrics.RateLimitMetrics;
 import in.riido.locksmith.models.RateLimitContext;
 import in.riido.locksmith.support.AspectSupport;
 import in.riido.locksmith.support.DurationResolver;
-import in.riido.locksmith.support.RateLimitConfig;
+import in.riido.locksmith.support.RateLimitInitializer;
 import in.riido.locksmith.support.SpELKeyResolver;
 import java.time.Duration;
 import java.util.Map;
@@ -21,9 +21,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
-import org.redisson.api.RBucket;
 import org.redisson.api.RRateLimiter;
-import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,10 +44,8 @@ import org.springframework.core.annotation.Order;
 public class RateLimitAspect {
 
   private static final Logger LOG = LoggerFactory.getLogger(RateLimitAspect.class);
-  private static final String META_SUFFIX = ":rate-meta";
 
-  /** Cache to track rate limiter configurations per key within this JVM. */
-  private final Map<String, RateLimitConfig> initializedRateLimiters = new ConcurrentHashMap<>();
+  private final RateLimitInitializer rateLimitInitializer;
 
   /** Cache of handler instances per class type for reuse. */
   private final Map<Class<? extends RateLimitSkipHandler>, RateLimitSkipHandler> handlerCache =
@@ -91,6 +87,7 @@ public class RateLimitAspect {
     this.rateLimitProperties = properties.rateLimit();
     this.applicationContext = applicationContext;
     this.rateLimitMetrics = rateLimitMetrics;
+    this.rateLimitInitializer = new RateLimitInitializer(redissonClient);
   }
 
   /**
@@ -147,7 +144,7 @@ public class RateLimitAspect {
         DurationResolver.resolve(annotation.waitTime(), rateLimitProperties.waitTime());
 
     // Initialize rate limiter in Redis (first time only per key per JVM)
-    ensureRateLimiterInitialized(rateLimitKey, permits, interval, annotation.type());
+    rateLimitInitializer.ensureInitialized(rateLimitKey, permits, interval, annotation.type());
 
     final RRateLimiter rateLimiter = redissonClient.getRateLimiter(rateLimitKey);
 
@@ -212,94 +209,6 @@ public class RateLimitAspect {
       }
       LOG.info("Rate limit execution completed for [{}] in [{}]", rateLimitKey, methodName);
     }
-  }
-
-  /**
-   * Ensures the rate limiter is initialized in Redis with the configured rate. Uses metadata
-   * storage to detect and warn about configuration mismatches across deployments.
-   *
-   * <p><b>Race Condition Note:</b> There is a small race window between {@code trySetRate} and
-   * {@code metaBucket.set} where another instance could read null from the metadata bucket. This is
-   * acceptable because:
-   *
-   * <ul>
-   *   <li>Redisson's {@code trySetRate} is itself atomic - only one instance will successfully
-   *       create the rate limiter
-   *   <li>The metadata is only used for logging warnings about configuration mismatches
-   *   <li>Worst case: duplicate "created rate limiter" log messages on first initialization
-   *   <li>The rate limiter's actual configuration in Redis is always correct
-   * </ul>
-   */
-  private void ensureRateLimiterInitialized(
-      @NonNull String rateLimitKey,
-      long permits,
-      @NonNull Duration interval,
-      @NonNull RateType rateType) {
-
-    RateLimitConfig newConfig = new RateLimitConfig(permits, interval.toMillis(), rateType);
-    RateLimitConfig existingConfig = initializedRateLimiters.get(rateLimitKey);
-
-    if (existingConfig != null) {
-      if (!existingConfig.equals(newConfig)) {
-        LOG.warn(
-            "Rate limiter [{}] is configured with different settings in this JVM: "
-                + "existing={}, new={}. Using existing configuration.",
-            rateLimitKey,
-            existingConfig,
-            newConfig);
-      }
-      return; // Already initialized by this JVM
-    }
-
-    String metaKey = rateLimitKey + META_SUFFIX;
-    RBucket<RateLimitConfig> metaBucket = redissonClient.getBucket(metaKey);
-    RRateLimiter rateLimiter = redissonClient.getRateLimiter(rateLimitKey);
-
-    RateLimitConfig existingRedisConfig = metaBucket.get();
-
-    if (existingRedisConfig == null) {
-      // First time - create rate limiter and metadata
-      boolean created = rateLimiter.trySetRate(rateType, permits, interval);
-
-      if (created) {
-        metaBucket.set(newConfig);
-        LOG.info(
-            "Created rate limiter [{}] with permits={}, interval={}, type={}",
-            rateLimitKey,
-            permits,
-            interval,
-            rateType);
-      } else {
-        // Race condition: another instance created it between our check and set
-        // Read the actual value and warn if different
-        existingRedisConfig = metaBucket.get();
-        if (existingRedisConfig != null && !existingRedisConfig.equals(newConfig)) {
-          LOG.warn(
-              "Rate limiter [{}] was created by another instance with different settings: "
-                  + "existing={}, this={}. Using existing configuration. "
-                  + "To change: delete Redis keys '{}' and '{}', then redeploy all instances.",
-              rateLimitKey,
-              existingRedisConfig,
-              newConfig,
-              rateLimitKey,
-              metaKey);
-        }
-      }
-    } else if (!existingRedisConfig.equals(newConfig)) {
-      // Rate limiter exists with different configuration
-      LOG.warn(
-          "Rate limiter [{}] exists with different settings: existing={}, this={}. "
-              + "Using existing configuration. To change: delete Redis keys '{}' and '{}', "
-              + "then redeploy all instances.",
-          rateLimitKey,
-          existingRedisConfig,
-          newConfig,
-          rateLimitKey,
-          metaKey);
-    }
-
-    initializedRateLimiters.put(
-        rateLimitKey, existingRedisConfig != null ? existingRedisConfig : newConfig);
   }
 
   /**

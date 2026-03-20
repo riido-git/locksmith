@@ -87,7 +87,7 @@ class LocksmithRateLimitTemplateTest {
 
       template.withKey("my-key").tryAcquire();
 
-      verify(redissonClient).getRateLimiter("ratelimit:my-key");
+      verify(redissonClient, atLeastOnce()).getRateLimiter("ratelimit:my-key");
     }
 
     @Test
