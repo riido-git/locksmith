@@ -94,10 +94,10 @@ public class LockHandle implements AutoCloseable {
       return;
     }
     try {
-      lock.unlock();
       if (lockMetrics != null) {
         lockMetrics.recordHeldTime(System.currentTimeMillis() - heldStartTime);
       }
+      lock.unlock();
       LOG.debug("Lock [{}] released via handle", fullKey);
     } catch (IllegalMonitorStateException e) {
       LOG.warn("Lock [{}] was already released (possibly expired): {}", fullKey, e.getMessage());

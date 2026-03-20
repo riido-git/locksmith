@@ -1,8 +1,12 @@
 package in.riido.locksmith.support;
 
+import in.riido.locksmith.LeaseExpirationBehavior;
+import java.time.Duration;
+import java.util.function.Supplier;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
@@ -112,6 +116,61 @@ public final class AspectSupport {
               + handlerClass.getName()
               + ". Ensure it is a Spring bean or has a public no-argument constructor.",
           e);
+    }
+  }
+
+  /**
+   * Checks if the method execution time exceeded the lease duration and handles accordingly.
+   *
+   * <p>Shared logic used by both {@code DistributedLockAspect} and {@code
+   * DistributedSemaphoreAspect} to avoid duplication.
+   *
+   * @param behavior the configured behavior for lease expiration
+   * @param leaseTime the configured lease duration
+   * @param executionTimeMs the actual execution time in milliseconds
+   * @param key the Redis key (lock key or semaphore key)
+   * @param methodName the method name
+   * @param primitiveName the display name for log messages (e.g., "Lock" or "Semaphore permit")
+   * @param metricsRecorder callback to record lease expiration in metrics, or null if metrics are
+   *     disabled
+   * @param exceptionSupplier supplier for the exception to throw when behavior is {@link
+   *     LeaseExpirationBehavior#THROW_EXCEPTION}
+   */
+  public static void checkLeaseExpiration(
+      @NonNull LeaseExpirationBehavior behavior,
+      @NonNull Duration leaseTime,
+      long executionTimeMs,
+      @NonNull String key,
+      @NonNull String methodName,
+      @NonNull String primitiveName,
+      @Nullable Runnable metricsRecorder,
+      @NonNull Supplier<RuntimeException> exceptionSupplier) {
+
+    final long leaseTimeMs = leaseTime.toMillis();
+
+    if (executionTimeMs <= leaseTimeMs) {
+      return;
+    }
+
+    if (metricsRecorder != null) {
+      metricsRecorder.run();
+    }
+
+    switch (behavior) {
+      case LOG_WARNING ->
+          LOG.warn(
+              "{} [{}] lease may have expired during execution of [{}]. "
+                  + "Lease time: {}ms, Execution time: {}ms. "
+                  + "Consider increasing the lease time.",
+              primitiveName,
+              key,
+              methodName,
+              leaseTimeMs,
+              executionTimeMs);
+      case THROW_EXCEPTION -> throw exceptionSupplier.get();
+      case IGNORE -> {
+        // Do nothing
+      }
     }
   }
 }

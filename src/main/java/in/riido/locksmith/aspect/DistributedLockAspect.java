@@ -202,8 +202,17 @@ public class DistributedLockAspect {
 
       // Skip lease expiration check when autoRenew is enabled
       if (!autoRenew) {
-        checkLeaseExpiration(
-            annotation.onLeaseExpired(), leaseTime, executionTime, lockKey, methodName);
+        AspectSupport.checkLeaseExpiration(
+            annotation.onLeaseExpired(),
+            leaseTime,
+            executionTime,
+            lockKey,
+            methodName,
+            "Lock",
+            lockMetrics != null ? lockMetrics::recordLeaseExpired : null,
+            () ->
+                new LeaseExpiredException(
+                    lockKey, methodName, leaseTime.toMillis(), executionTime));
       }
 
       return result;
@@ -230,50 +239,6 @@ public class DistributedLockAspect {
           lockMetrics.decrementAutoRenewActive();
         }
         releaseLock(lock, lockKey, methodName);
-      }
-    }
-  }
-
-  /**
-   * Checks if the method execution time exceeded the lease duration and handles accordingly.
-   *
-   * @param behavior the configured behavior for lease expiration
-   * @param leaseTime the configured lease duration
-   * @param executionTimeMs the actual execution time in milliseconds
-   * @param lockKey the lock key
-   * @param methodName the method name
-   */
-  private void checkLeaseExpiration(
-      @NonNull LeaseExpirationBehavior behavior,
-      @NonNull Duration leaseTime,
-      long executionTimeMs,
-      @NonNull String lockKey,
-      @NonNull String methodName) {
-
-    final long leaseTimeMs = leaseTime.toMillis();
-
-    if (executionTimeMs <= leaseTimeMs) {
-      return;
-    }
-
-    if (lockMetrics != null) {
-      lockMetrics.recordLeaseExpired();
-    }
-
-    switch (behavior) {
-      case LOG_WARNING ->
-          LOG.warn(
-              "Lock [{}] lease may have expired during execution of [{}]. "
-                  + "Lease time: {}ms, Execution time: {}ms. "
-                  + "Consider increasing the lease time.",
-              lockKey,
-              methodName,
-              leaseTimeMs,
-              executionTimeMs);
-      case THROW_EXCEPTION ->
-          throw new LeaseExpiredException(lockKey, methodName, leaseTimeMs, executionTimeMs);
-      case IGNORE -> {
-        // Do nothing
       }
     }
   }

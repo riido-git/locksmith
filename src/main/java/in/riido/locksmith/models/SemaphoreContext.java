@@ -23,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  * @param args the arguments passed to the method (read-only by convention; not modified by the
  *     aspect)
  * @param returnType the return type of the method
- * @param permitId the permit ID if one was acquired, null otherwise
+ * @param permitId the permit ID if one was acquired, null otherwise. When used in skip handlers,
+ *     this is always null because skip handlers are only invoked when permit acquisition fails.
  * @author Garvit Joshi
  * @since 2.0.0
  */

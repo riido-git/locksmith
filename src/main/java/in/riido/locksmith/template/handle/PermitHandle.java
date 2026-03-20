@@ -113,10 +113,10 @@ public class PermitHandle implements AutoCloseable {
       return;
     }
     try {
-      semaphore.release(permitId);
       if (semaphoreMetrics != null) {
         semaphoreMetrics.recordHeldTime(System.currentTimeMillis() - heldStartTime);
       }
+      semaphore.release(permitId);
       LOG.debug("Permit [{}] released from [{}] via handle", permitId, fullKey);
     } catch (IllegalArgumentException e) {
       LOG.warn(

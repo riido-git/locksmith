@@ -2,7 +2,6 @@ package in.riido.locksmith.aspect;
 
 import in.riido.locksmith.AcquisitionMode;
 import in.riido.locksmith.DistributedSemaphore;
-import in.riido.locksmith.LeaseExpirationBehavior;
 import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.autoconfigure.LocksmithProperties.SemaphoreProperties;
 import in.riido.locksmith.exception.SemaphoreConfigurationException;
@@ -204,8 +203,17 @@ public class DistributedSemaphoreAspect {
             result != null);
       }
 
-      checkLeaseExpiration(
-          annotation.onLeaseExpired(), leaseTime, executionTime, semaphoreKey, methodName);
+      AspectSupport.checkLeaseExpiration(
+          annotation.onLeaseExpired(),
+          leaseTime,
+          executionTime,
+          semaphoreKey,
+          methodName,
+          "Semaphore permit",
+          semaphoreMetrics != null ? semaphoreMetrics::recordLeaseExpired : null,
+          () ->
+              new SemaphoreLeaseExpiredException(
+                  semaphoreKey, methodName, leaseTime.toMillis(), executionTime));
 
       return result;
 
@@ -280,42 +288,6 @@ public class DistributedSemaphoreAspect {
           semaphoreKey,
           methodName,
           e);
-    }
-  }
-
-  private void checkLeaseExpiration(
-      @NonNull LeaseExpirationBehavior behavior,
-      @NonNull Duration leaseTime,
-      long executionTimeMs,
-      @NonNull String semaphoreKey,
-      @NonNull String methodName) {
-
-    final long leaseTimeMs = leaseTime.toMillis();
-
-    if (executionTimeMs <= leaseTimeMs) {
-      return;
-    }
-
-    if (semaphoreMetrics != null) {
-      semaphoreMetrics.recordLeaseExpired();
-    }
-
-    switch (behavior) {
-      case LOG_WARNING ->
-          LOG.warn(
-              "Semaphore [{}] permit lease may have expired during execution of [{}]. "
-                  + "Lease time: {}ms, Execution time: {}ms. "
-                  + "Consider increasing the lease time.",
-              semaphoreKey,
-              methodName,
-              leaseTimeMs,
-              executionTimeMs);
-      case THROW_EXCEPTION ->
-          throw new SemaphoreLeaseExpiredException(
-              semaphoreKey, methodName, leaseTimeMs, executionTimeMs);
-      case IGNORE -> {
-        // Do nothing
-      }
     }
   }
 
