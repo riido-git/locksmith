@@ -34,7 +34,7 @@ class RateLimitMetricsTest {
     void shouldRecordAcquiredCounter() {
       metrics.recordAcquired();
 
-      Counter counter = meterRegistry.find("locksmith.ratelimit.acquired").counter();
+      Counter counter = meterRegistry.find("locksmith.rate.limit.acquired").counter();
       assertNotNull(counter);
       assertEquals(1, counter.count());
     }
@@ -46,7 +46,7 @@ class RateLimitMetricsTest {
       metrics.recordAcquired();
       metrics.recordAcquired();
 
-      Counter counter = meterRegistry.find("locksmith.ratelimit.acquired").counter();
+      Counter counter = meterRegistry.find("locksmith.rate.limit.acquired").counter();
       assertEquals(3, counter.count());
     }
   }
@@ -61,7 +61,7 @@ class RateLimitMetricsTest {
       metrics.recordExceeded(AcquisitionMode.SKIP_IMMEDIATELY);
 
       Counter counter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
+          meterRegistry.find("locksmith.rate.limit.exceeded").tag("reason", "immediate").counter();
       assertNotNull(counter);
       assertEquals(1, counter.count());
     }
@@ -72,7 +72,7 @@ class RateLimitMetricsTest {
       metrics.recordExceeded(AcquisitionMode.WAIT_AND_SKIP);
 
       Counter counter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "timeout").counter();
+          meterRegistry.find("locksmith.rate.limit.exceeded").tag("reason", "timeout").counter();
       assertNotNull(counter);
       assertEquals(1, counter.count());
     }
@@ -85,9 +85,9 @@ class RateLimitMetricsTest {
       metrics.recordExceeded(AcquisitionMode.WAIT_AND_SKIP);
 
       Counter immediateCounter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "immediate").counter();
+          meterRegistry.find("locksmith.rate.limit.exceeded").tag("reason", "immediate").counter();
       Counter timeoutCounter =
-          meterRegistry.find("locksmith.ratelimit.exceeded").tag("reason", "timeout").counter();
+          meterRegistry.find("locksmith.rate.limit.exceeded").tag("reason", "timeout").counter();
 
       assertEquals(2, immediateCounter.count());
       assertEquals(1, timeoutCounter.count());
@@ -103,7 +103,7 @@ class RateLimitMetricsTest {
     void shouldRecordAcquisitionTime() {
       metrics.recordAcquisitionTime(150L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.acquisition.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.acquisition.time").timer();
       assertNotNull(timer);
       assertEquals(1, timer.count());
       assertTrue(timer.totalTime(TimeUnit.MILLISECONDS) >= 150);
@@ -116,7 +116,7 @@ class RateLimitMetricsTest {
       metrics.recordAcquisitionTime(200L);
       metrics.recordAcquisitionTime(300L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.acquisition.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.acquisition.time").timer();
       assertEquals(3, timer.count());
       assertTrue(timer.totalTime(TimeUnit.MILLISECONDS) >= 600);
     }
@@ -131,7 +131,7 @@ class RateLimitMetricsTest {
     void shouldRecordExecutionTime() {
       metrics.recordExecutionTime(250L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.execution.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.execution.time").timer();
       assertNotNull(timer);
       assertEquals(1, timer.count());
       assertTrue(timer.totalTime(TimeUnit.MILLISECONDS) >= 250);
@@ -143,7 +143,7 @@ class RateLimitMetricsTest {
       metrics.recordExecutionTime(100L);
       metrics.recordExecutionTime(200L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.execution.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.execution.time").timer();
       assertEquals(2, timer.count());
       assertTrue(timer.totalTime(TimeUnit.MILLISECONDS) >= 300);
     }
@@ -158,7 +158,7 @@ class RateLimitMetricsTest {
     void shouldHandleZeroAcquisitionTime() {
       metrics.recordAcquisitionTime(0L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.acquisition.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.acquisition.time").timer();
       assertNotNull(timer);
       assertEquals(1, timer.count());
     }
@@ -168,7 +168,7 @@ class RateLimitMetricsTest {
     void shouldHandleZeroExecutionTime() {
       metrics.recordExecutionTime(0L);
 
-      Timer timer = meterRegistry.find("locksmith.ratelimit.execution.time").timer();
+      Timer timer = meterRegistry.find("locksmith.rate.limit.execution.time").timer();
       assertNotNull(timer);
       assertEquals(1, timer.count());
     }

@@ -13,10 +13,10 @@ import org.jspecify.annotations.NonNull;
  * <p>Provides the following metrics:
  *
  * <ul>
- *   <li>{@code locksmith.ratelimit.acquired} - Counter for successful permit acquisitions
- *   <li>{@code locksmith.ratelimit.exceeded} - Counter for rate limit exceeded (tagged by reason)
- *   <li>{@code locksmith.ratelimit.acquisition.time} - Timer for permit acquisition duration
- *   <li>{@code locksmith.ratelimit.execution.time} - Timer for method execution time after permit
+ *   <li>{@code locksmith.rate.limit.acquired} - Counter for successful permit acquisitions
+ *   <li>{@code locksmith.rate.limit.exceeded} - Counter for rate limit exceeded (tagged by reason)
+ *   <li>{@code locksmith.rate.limit.acquisition.time} - Timer for permit acquisition duration
+ *   <li>{@code locksmith.rate.limit.execution.time} - Timer for method execution time after permit
  *       acquired
  * </ul>
  *
@@ -25,7 +25,7 @@ import org.jspecify.annotations.NonNull;
  */
 public class RateLimitMetrics {
 
-  private static final String PREFIX = "locksmith.ratelimit.";
+  private static final String PREFIX = "locksmith.rate.limit.";
 
   private final Counter acquired;
   private final Counter exceededTimeout;
