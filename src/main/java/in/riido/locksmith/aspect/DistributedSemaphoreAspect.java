@@ -159,6 +159,7 @@ public class DistributedSemaphoreAspect {
     }
 
     String permitId = null;
+    long startTime = 0;
     final long acquisitionStartTime = System.currentTimeMillis();
 
     try {
@@ -190,13 +191,9 @@ public class DistributedSemaphoreAspect {
 
       LOG.info("Permit [{}] acquired from [{}] for [{}]", permitId, semaphoreKey, methodName);
 
-      final long startTime = System.currentTimeMillis();
+      startTime = System.currentTimeMillis();
       final Object result = joinPoint.proceed();
       final long executionTime = System.currentTimeMillis() - startTime;
-
-      if (semaphoreMetrics != null) {
-        semaphoreMetrics.recordHeldTime(executionTime);
-      }
 
       if (debugMode) {
         LOG.info(
@@ -230,6 +227,9 @@ public class DistributedSemaphoreAspect {
       return handleSkip(annotation, joinPoint, semaphoreKey, methodName, permitId);
     } finally {
       if (permitId != null) {
+        if (semaphoreMetrics != null) {
+          semaphoreMetrics.recordHeldTime(System.currentTimeMillis() - startTime);
+        }
         releasePermit(semaphore, permitId, semaphoreKey, methodName);
       }
     }

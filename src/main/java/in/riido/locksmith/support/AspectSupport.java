@@ -1,6 +1,5 @@
 package in.riido.locksmith.support;
 
-import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.jspecify.annotations.NonNull;
