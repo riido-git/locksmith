@@ -1,6 +1,6 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -100,7 +100,3 @@ The user is meticulous about code quality and will reject sloppy work. Follow th
 - **Data normalization at the source** — formatting, sanitization, and key resolution must happen at a single point (the aspect or template), never duplicated across consumers downstream. This prevents duplication and ensures consistency.
 - **Records for truly immutable data only** — context objects (`LockContext`, `SemaphoreContext`, `RateLimitContext`) and properties (`LocksmithProperties`) are records because they are genuinely immutable. Do not use records for objects that need post-construction mutation.
 - **Utility classes must be `final` with private constructor** — see `SpELKeyResolver` and `DurationResolver` as examples.
-
-## Git Conventions
-
-- **Never add `Co-Authored-By: Codex`** or any Codex co-author line to git commits unless explicitly told to do so.
