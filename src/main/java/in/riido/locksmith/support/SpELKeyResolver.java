@@ -90,7 +90,7 @@ public final class SpELKeyResolver {
   @NonNull
   public static String resolve(
       @NonNull String keyExpression, @NonNull Method method, @Nullable Object[] args) {
-    if (keyExpression.startsWith("#{") && keyExpression.endsWith("}")) {
+    if (isSpELExpression(keyExpression)) {
       return evaluateSpEL(keyExpression.substring(2, keyExpression.length() - 1), method, args);
     }
     return keyExpression;

@@ -129,8 +129,7 @@ public class RateLimitAspect {
 
     // Parse interval
     final Duration interval =
-        DurationResolver.resolve(
-            annotation.interval().isBlank() ? null : annotation.interval(), Duration.ofSeconds(1));
+        DurationResolver.resolve(annotation.interval(), Duration.ofSeconds(1));
 
     // Validate interval is positive
     if (interval.isZero() || interval.isNegative()) {
