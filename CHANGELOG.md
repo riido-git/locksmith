@@ -2,6 +2,116 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.0.0] - 2026-09-23
+
+A ground-up rewrite. The public API, the properties, the metrics and the Redis key layout change;
+nothing from 3.x is kept for compatibility. Read the migration table before upgrading.
+
+### Added
+- `LockOperations` and `SemaphoreOperations` beans: a builder per acquire that returns an
+  `AutoCloseable` handle, plus `isLocked(key, type)` and `availablePermits(key)`. The annotations
+  call the same code.
+- `onFailure = THROW | SKIP | HANDLER` on both annotations, with `LockFailureHandler` and
+  `SemaphoreFailureHandler` beans resolved by type.
+- Startup validation: every annotation is checked when its bean is created, and a misconfiguration
+  fails the application context refresh.
+- Key templates with literal text and `#{...}` islands, for example `"user:#{#userId}"`.
+- `LocksmithException` as the common unchecked base of every Locksmith exception, and
+  `LocksmithConfigurationException` for misconfigurations.
+- Two Micrometer timers, `locksmith.acquire` and `locksmith.held`, tagged by primitive and outcome.
+- Async methods: a method that returns a `CompletionStage` holds its lock and permit until the
+  returned future completes, normally, exceptionally or by cancellation. Reactive return types,
+  Kotlin `suspend` functions and a plain `Future` without `@Async` fail startup.
+
+### Removed
+- Rate limiting (`@RateLimit` and everything around it).
+- The AspectJ aspects and the `aspectjweaver` dependency; interception is a Spring AOP advisor.
+- The templates with callbacks, the skip handlers and their built-in implementations,
+  `AcquisitionMode`, `LeaseExpirationBehavior`, the lease-expired exceptions, and the per-primitive
+  properties.
+
+### Fixed
+- A key template such as `order:#{#id}` whose `#{...}` island resolves to `null` or a blank string
+  now throws `LocksmithConfigurationException`, instead of every such call sharing one key.
+- After re-creating a lost semaphore, the retry waits only the part of `waitTime` that is left, not
+  the full `waitTime` again.
+- When another instance creates a semaphore first, the count is read again and changed if it
+  differs, so the last writer wins as documented.
+- The Redis calls that set a semaphore's count no longer run inside the permit-count cache's map
+  operation, so they never block an acquire of another key.
+
+### Migration from 3.x
+
+One row per dropped or changed item. Class names without a package are in `in.riido.locksmith` or
+the package named in the 4.0 column.
+
+| 3.x | 4.0 | what to do |
+|---|---|---|
+| Spring Boot 4.0 or later | Spring Boot 4.1.x | Upgrade to Spring Boot 4.1.x. |
+| `org.aspectj:aspectjweaver` required on the classpath | not used | Remove the dependency if nothing else needs it. |
+| AspectJ aspects `aspect.DistributedLockAspect`, `DistributedSemaphoreAspect`, `RateLimitAspect` | Spring AOP advisor, internal | Remove any bean that replaced or referenced an aspect. |
+| Both aspects at `Ordered.HIGHEST_PRECEDENCE`, relative order not fixed | one advisor at `Ordered.HIGHEST_PRECEDENCE + 100`; permit first, then lock | Check advice you ordered relative to Locksmith. |
+| `LocksmithMetricsAutoConfiguration` | merged into `autoconfigure.LocksmithAutoConfiguration` | Remove it from `spring.autoconfigure.exclude` and from `exclude = ...` on `@SpringBootApplication`; the class no longer exists. |
+| Redisson as the only backend, no backend abstraction | unchanged: Redisson only, no backend abstraction | Nothing. |
+| `@RateLimit` (with Redisson's `RateType` for `type`) | removed | Use a rate-limiting library such as Bucket4j or Resilience4j. |
+| `template.LocksmithRateLimitTemplate`, `template.callback.RateLimitCallback`, `handler.RateLimitSkipHandler`, `handler.ratelimit.RateLimitThrowExceptionHandler`, `handler.ratelimit.RateLimitReturnDefaultHandler`, `models.RateLimitContext`, `exception.RateLimitExceededException`, `exception.RateLimitConfigurationException`, `metrics.RateLimitMetrics`, `support.RateLimitConfig`, `support.RateLimitInitializer` | removed | Replace with the rate-limiting library's own types. |
+| `locksmith.rate-limit.*` properties (`enabled`, `wait-time`, `key-prefix`, `debug`, `metrics-enabled`) | removed | Delete them. |
+| `@DistributedLock(mode = ...)`, `@DistributedSemaphore(mode = ...)`, `AcquisitionMode` (`SKIP_IMMEDIATELY`, `WAIT_AND_SKIP`) | removed; `waitTime` alone decides | Drop `mode`. For `WAIT_AND_SKIP`, set `waitTime`; blank or zero means try once. |
+| `locksmith.lock.wait-time`, `locksmith.semaphore.wait-time` (default 60s, used by `WAIT_AND_SKIP`) | removed; no property-level wait | Set `waitTime` on each annotation or builder that should wait. |
+| Lock `leaseTime` blank: fixed lease from `locksmith.lock.lease-time` (10m), not renewed | blank: renewed while held (Redisson watchdog); a value: fixed lease, not renewed | Nothing for most methods. To keep a fixed lease, set `leaseTime` on the annotation. |
+| `locksmith.lock.lease-time` | removed | Delete it; set `leaseTime` per annotation where a fixed lease is wanted. |
+| `@DistributedLock(autoRenew = true)`, builder `autoRenew()` | removed; renewal is the default | Drop it and leave `leaseTime` blank or unset. |
+| `@DistributedLock(onLeaseExpired = ...)`, `@DistributedSemaphore(onLeaseExpired = ...)`, `LeaseExpirationBehavior` | removed; an outrun lease logs one WARN at release and the result is returned | Drop the attribute. Alert on the WARN if you need to know. |
+| `exception.LeaseExpiredException`, `exception.SemaphoreLeaseExpiredException` | removed | Remove the catch blocks. |
+| A zero `leaseTime` accepted and passed to Redisson, which then renews a lock instead of expiring it | zero or below one millisecond rejected: at startup for annotations, `IllegalArgumentException` in the builders | Use at least `1ms`, or leave a lock lease blank for renewal. |
+| `skipHandler = ...` attribute | `onFailure` plus `handler` | Replace with `onFailure = THROW`, `SKIP` or `HANDLER` (with `handler = ...`). |
+| `handler.lock.LockThrowExceptionHandler`, `handler.semaphore.SemaphoreThrowExceptionHandler` (built-in, default) | `OnFailure.THROW`, the default | Remove the `skipHandler` attribute. |
+| `handler.lock.LockReturnDefaultHandler`, `handler.semaphore.SemaphoreReturnDefaultHandler` | `OnFailure.SKIP` | Use `onFailure = OnFailure.SKIP`. The return values are the same table. |
+| `handler.LockSkipHandler.handle(LockContext)`, `handler.SemaphoreSkipHandler.handle(SemaphoreContext)` | `lock.LockFailureHandler.onFailure(LockFailureContext)`, `semaphore.SemaphoreFailureHandler.onFailure(SemaphoreFailureContext)` | Implement the new interface and set `onFailure = OnFailure.HANDLER, handler = YourHandler.class`. |
+| Handler looked up as a bean, else created by reflection with a no-argument constructor | exactly one bean of the handler type, checked at startup; never created by reflection | Register the handler as a Spring bean. |
+| `models.LockContext(lockKey, methodName, method, args, returnType)` | `lock.LockFailureContext(key, method, args, waitTime)` | Use `key()`; use `method().getName()` and `method().getReturnType()` for the dropped fields. |
+| `models.SemaphoreContext(semaphoreKey, methodName, method, args, returnType, permitId)` | `semaphore.SemaphoreFailureContext(key, permits, method, args, waitTime)` | As above; there is no permit id, since none was acquired. |
+| `handler.DefaultValueResolver` (public) | internal | Stop using it; `OnFailure.SKIP` applies the same defaults. |
+| `template.LocksmithLockTemplate` | `lock.LockOperations` bean | Inject `LockOperations`. |
+| `template.LocksmithSemaphoreTemplate` | `semaphore.SemaphoreOperations` bean | Inject `SemaphoreOperations`. |
+| `withKey(String)` | `key(String)` | Rename the call. |
+| `LockOperationBuilder.lockType(LockType)` | `LockOperations.Builder.type(LockType)` | Rename the call. |
+| `tryLock()`, `tryAcquire()` on the builders | `acquire()` | Rename the call. It never throws for "not acquired". |
+| `execute(callback)` on the builders, `template.callback.LockCallback`, `template.callback.SemaphoreCallback` | removed; no callback-style API | Use try-with-resources on the handle and check `acquired()`. |
+| `template.handle.LockHandle`, `template.handle.PermitHandle` | `lock.LockHandle`, `semaphore.PermitHandle` | Change the imports. |
+| `LockHandle.isAcquired()`, `PermitHandle.isAcquired()` | `acquired()` | Rename the call. `key()` is new on both. |
+| `LockHandle.acquired(...)`, `LockHandle.notAcquired()`, `PermitHandle.acquired(...)`, `PermitHandle.notAcquired()` (public factories) | removed; only the operations create handles | Mock the handle in tests instead. |
+| `LocksmithLockTemplate.unlock(key)`, `unlock(key, type)` | removed; no unlock by name | Close the `LockHandle` that acquired the lock. |
+| `LocksmithLockTemplate.isLocked(key)` | `LockOperations.isLocked(key, type)` | Pass the `LockType`. |
+| `LocksmithSemaphoreTemplate.releasePermit(key, permitId)` | removed | Close the `PermitHandle`. |
+| Fair, fenced, multi and spin locks | not offered, as in 3.x | Use Redisson directly if you need them. |
+| `@DistributedSemaphore(permits = 5)`: `int`, default 1 | `permits = "5"`: `String`, required, `${...}` placeholders resolved | Quote the number, or use a placeholder such as `"${reports.max-concurrent}"`. |
+| Semaphore count: first writer wins, WARN on mismatch, `<key>:meta` bucket in Redis | your code owns the count: the last writer wins, INFO on change, no metadata key | Delete the old `semaphore:*:meta` keys. Keep one count per key. |
+| `exception.SemaphoreConfigurationException` for one key used with two counts in one JVM | removed; the last writer wins | Remove the catch blocks. |
+| Key: evaluated only when the whole string is `#{...}`; `"user:#{#id}"` was a literal | template mode: literal text with `#{...}` islands, so `"user:#{#id}"` is evaluated | Check literal keys that contain `#{`. |
+| Keys, durations and handlers checked on the first call | checked at startup; a misconfiguration fails the context refresh; an unknown key variable fails with a `-parameters` hint | Fix the reported annotation. |
+| Key resolved to null or blank: `IllegalArgumentException` | `LocksmithConfigurationException` | Update catch blocks. |
+| No bean references and no root object in key expressions | unchanged; `#root` fails at startup, a `@bean` reference fails when evaluated; `#this` works inside selections and projections | Pass the value as a method parameter. |
+| `exception` package | `lock.LockNotAcquiredException`, `semaphore.SemaphoreNotAcquiredException`, `LocksmithConfigurationException`, `LocksmithException` | Change the imports. |
+| Exceptions extend `RuntimeException` | all extend `LocksmithException`, which extends `RuntimeException` | Catch `LocksmithException` to handle every Locksmith error. |
+| `LockNotAcquiredException(lockKey, methodName)`, `getLockKey()`, `getMethodName()` | `(key, waitTime)`, `key()`, `waitTime()`; message `Lock [<key>] not acquired within <waitTime>` | Use `key()`; the method name is no longer carried. |
+| `SemaphoreNotAcquiredException(semaphoreKey, methodName)`, `getSemaphoreKey()`, `getMethodName()` | `(key, permits, waitTime)`, `key()`, `permits()`, `waitTime()`; message `Semaphore [<key>] permit not acquired within <waitTime> (permits <n>)` | Use `key()`. |
+| `locksmith.lock.enabled`, `locksmith.semaphore.enabled` | `locksmith.enabled`, one switch for both; `false` logs one WARN | Replace with `locksmith.enabled`. |
+| `locksmith.lock.key-prefix` (`lock:`), `locksmith.semaphore.key-prefix` (`semaphore:`) | `locksmith.key-prefix` (`locksmith:`) plus a fixed `lock:` or `semaphore:` part | Replace with `locksmith.key-prefix` if you need another prefix. |
+| Redis keys `lock:<key>` and `semaphore:<key>` | `locksmith:lock:<key>` and `locksmith:semaphore:<key>` | 3.x and 4.0 instances do not exclude each other. Do not run both against the same keys at once. |
+| `locksmith.semaphore.lease-time`: zero or negative replaced by the default | same property and default (5m); a value below one millisecond fails the startup | Set a value of at least `1ms`. |
+| `locksmith.lock.debug`, `locksmith.semaphore.debug` | removed | Set `logging.level.in.riido.locksmith=DEBUG`. |
+| `locksmith.lock.metrics-enabled`, `locksmith.semaphore.metrics-enabled` | removed; metrics are recorded whenever a `MeterRegistry` bean exists | Delete them. |
+| `autoconfigure.LocksmithProperties` with nested `LockProperties`, `SemaphoreProperties`, `RateLimitProperties` and `defaults()` | `LocksmithProperties(enabled, keyPrefix, semaphore)` with nested `Semaphore(leaseTime)` | Update code that reads the properties. |
+| Metrics `locksmith.lock.acquired`, `locksmith.semaphore.acquired` (counters) | `locksmith.acquire` timer with `outcome=acquired` | Count the timer, tagged `primitive=lock` or `semaphore`. |
+| Metrics `locksmith.lock.skipped`, `locksmith.semaphore.skipped` with tag `reason=immediate` or `timeout` | `locksmith.acquire` with `outcome=skipped`; `outcome=interrupted` is new; no `reason` tag | Update dashboards and alerts. |
+| Metrics `locksmith.lock.acquisition.time`, `locksmith.semaphore.acquisition.time` | `locksmith.acquire`, one record per attempt, the time spent waiting | Update dashboards. |
+| Metrics `locksmith.lock.held.time`, `locksmith.semaphore.held.time` | `locksmith.held` with tag `primitive` | Update dashboards. |
+| Metrics `locksmith.lock.lease.expired`, `locksmith.semaphore.lease.expired` | removed; an outrun lease is a WARN log line | Alert on the log line instead. |
+| Gauge `locksmith.lock.autorenew.active` | removed | Remove it from dashboards. |
+| No key tag on metrics | unchanged; no key tag, so the number of meters stays fixed | Nothing. |
+| Packages `aspect`, `exception`, `handler` (with `lock`, `semaphore`, `ratelimit`), `models`, `template` (with `callback`, `handle`) | public packages are `in.riido.locksmith`, `lock`, `semaphore`, `autoconfigure`; `aop`, `support` and `metrics` are internal | Change the imports as the rows above say. |
+
 ## [3.0.3] - 2026-03-06
 
 ### Changed

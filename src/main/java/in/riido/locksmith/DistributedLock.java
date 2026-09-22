@@ -1,9 +1,6 @@
 package in.riido.locksmith;
 
-import in.riido.locksmith.exception.LockNotAcquiredException;
-import in.riido.locksmith.handler.LockSkipHandler;
-import in.riido.locksmith.handler.lock.LockReturnDefaultHandler;
-import in.riido.locksmith.handler.lock.LockThrowExceptionHandler;
+import in.riido.locksmith.lock.LockFailureHandler;
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -11,50 +8,18 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to apply distributed locking on a method. Only one instance across all servers can
- * execute the annotated method at a time for the given lock key.
- *
- * <p>When the lock cannot be acquired, the behavior is controlled by {@link #skipHandler()}:
- *
- * <ul>
- *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
- *   <li>{@link LockReturnDefaultHandler}: Returns null for objects, default values for primitives
- * </ul>
- *
- * <p>Usage examples:
+ * Runs the annotated method while holding a distributed lock on a key. The lock is released when
+ * the method returns or throws; for a method that returns a {@code CompletionStage}, when that
+ * stage completes.
  *
  * <pre>{@code
- * // Static key - throws exception if lock not acquired
- * @DistributedLock(key = "critical-task")
- * public void criticalTask() { }
- *
- * // For scheduled tasks - silently skip if lock not acquired
- * @DistributedLock(key = "scheduled-task", skipHandler = LockReturnDefaultHandler.class)
- * public void scheduledTask() { }
- *
- * // SpEL with method parameter - lock per user
- * @DistributedLock(key = "#{#userId}")
- * public void processUser(String userId) { }
- *
- * // SpEL with object property
- * @DistributedLock(key = "#{#user.id}")
- * public void updateUser(User user) { }
- *
- * // SpEL with concatenation
- * @DistributedLock(key = "#{'user-' + #userId}")
- * public void processUser(Long userId) { }
- *
- * // Read lock - allows concurrent reads
- * @DistributedLock(key = "resource", type = LockType.READ)
- * public Data readData() { }
- *
- * // Write lock - exclusive access for writes
- * @DistributedLock(key = "resource", type = LockType.WRITE)
- * public void writeData(Data data) { }
+ * @DistributedLock(key = "order:#{#orderId}", waitTime = "5s")
+ * public void process(String orderId) { ... }
  * }</pre>
  *
- * @author Garvit Joshi
- * @since 1.0.0
+ * <p>Every attribute is checked at startup; a misconfigured annotation fails the application
+ * context refresh with a {@link LocksmithConfigurationException}. The annotation is honoured only
+ * on calls through the Spring proxy: a call on {@code this} bypasses it.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -62,171 +27,52 @@ import java.lang.annotation.Target;
 public @interface DistributedLock {
 
   /**
-   * The unique key for the lock. This key is used to identify the lock in Redis. Different tasks
-   * should use different keys.
+   * The lock key, as a template: literal text with {@code #{...}} SpEL islands whose variables are
+   * the method parameters by name, {@code #pN} or {@code #aN}, for example {@code
+   * "user:#{#userId}"}; {@code #this} is allowed inside a selection or projection. Must not be
+   * blank. The Redis key is {@code <keyPrefix>lock:<resolved key>}.
    *
-   * <p>Supports Spring Expression Language (SpEL). SpEL expressions must be wrapped in {@code
-   * #{...}} syntax. Use {@code #{#paramName}} to reference method parameters, {@code
-   * #{#paramName.property}} to access object properties.
-   *
-   * <p>Literal keys (without {@code #{...}}) are used as-is and can contain any characters
-   * including {@code #}.
-   *
-   * @return the lock key (literal or SpEL expression)
+   * @return the key template
    */
   String key();
 
   /**
-   * The type of lock to acquire.
+   * The lock type. Read and write locks of one key share the Redis key.
    *
-   * <ul>
-   *   <li>{@link LockType#REENTRANT} (default): Exclusive lock, only one holder at a time
-   *   <li>{@link LockType#READ}: Shared lock, multiple concurrent readers allowed
-   *   <li>{@link LockType#WRITE}: Exclusive lock, no readers or writers allowed simultaneously
-   * </ul>
-   *
-   * <p>When using READ or WRITE locks, all methods accessing the same resource should use the same
-   * lock key to ensure proper synchronization.
-   *
-   * @return the lock type, defaults to REENTRANT
+   * @return the lock type; defaults to {@link LockType#REENTRANT}
    */
   LockType type() default LockType.REENTRANT;
 
   /**
-   * The lock acquisition mode. Determines behavior when the lock is already held.
+   * How long to wait for the lock, as {@code "5s"} or {@code "PT5S"}. The default {@code ""} means
+   * try once and give up. Must not be negative.
    *
-   * @return the acquisition mode, defaults to SKIP_IMMEDIATELY
-   */
-  AcquisitionMode mode() default AcquisitionMode.SKIP_IMMEDIATELY;
-
-  /**
-   * Override the default lease time. The lock will be automatically released after this duration.
-   * Use an empty string to use the default from configuration.
-   *
-   * <p>Accepts duration strings in the following formats:
-   *
-   * <ul>
-   *   <li>Simple format: "10m" (10 minutes), "30s" (30 seconds), "1h" (1 hour)
-   *   <li>ISO-8601 format: "PT10M" (10 minutes), "PT30S" (30 seconds)
-   * </ul>
-   *
-   * @return lease time duration string, empty for default
-   */
-  String leaseTime() default "";
-
-  /**
-   * Override the default wait time for WAIT_AND_SKIP mode. Use an empty string to use the default
-   * from configuration.
-   *
-   * <p>Accepts duration strings in the following formats:
-   *
-   * <ul>
-   *   <li>Simple format: "10s" (10 seconds), "5m" (5 minutes), "1h" (1 hour)
-   *   <li>ISO-8601 format: "PT10S" (10 seconds), "PT5M" (5 minutes)
-   * </ul>
-   *
-   * @return wait time duration string, empty for default
+   * @return the wait time
    */
   String waitTime() default "";
 
   /**
-   * Custom handler for lock acquisition failures.
+   * A fixed lease, as {@code "30s"} or {@code "PT30S"}: the lock expires this long after it is
+   * acquired and is not renewed. The default {@code ""} means the lock is renewed for as long as it
+   * is held. Must be at least one millisecond when set.
    *
-   * <p>Handlers can be defined as Spring beans (with dependency injection support) or as plain
-   * classes with a public no-argument constructor. Spring beans are looked up first by type, then
-   * reflection-based instantiation is used as a fallback.
-   *
-   * <p>Built-in handlers:
-   *
-   * <ul>
-   *   <li>{@link LockThrowExceptionHandler} (default): Throws {@link LockNotAcquiredException}
-   *   <li>{@link LockReturnDefaultHandler}: Returns null/default values
-   * </ul>
-   *
-   * <p>Example Spring bean handler with dependency injection:
-   *
-   * <pre>{@code
-   * @Component
-   * public class AlertingHandler implements LockSkipHandler {
-   *     private final AlertService alertService;
-   *
-   *     public AlertingHandler(AlertService alertService) {
-   *         this.alertService = alertService;
-   *     }
-   *
-   *     @Override
-   *     public Object handle(LockContext context) {
-   *         alertService.sendAlert("Lock failed: " + context.lockKey());
-   *         return null;
-   *     }
-   * }
-   *
-   * @DistributedLock(key = "my-task", skipHandler = AlertingHandler.class)
-   * public void myTask() { }
-   * }</pre>
-   *
-   * @return the skip handler class, defaults to ThrowExceptionHandler
-   * @see LockSkipHandler
+   * @return the lease time
    */
-  Class<? extends LockSkipHandler> skipHandler() default LockThrowExceptionHandler.class;
+  String leaseTime() default "";
 
   /**
-   * Defines the behavior when method execution time exceeds the configured lease duration.
+   * What the method does when the lock is not acquired.
    *
-   * <p>When a method runs longer than its lock's lease time, the lock may expire while the method
-   * is still executing. This can lead to concurrent access by other instances. This parameter
-   * configures how to handle detection of such scenarios after method completion.
-   *
-   * <ul>
-   *   <li>{@link LeaseExpirationBehavior#LOG_WARNING} (default): Log a warning message
-   *   <li>{@link LeaseExpirationBehavior#THROW_EXCEPTION}: Throw {@link
-   *       in.riido.locksmith.exception.LeaseExpiredException}
-   *   <li>{@link LeaseExpirationBehavior#IGNORE}: Silently ignore
-   * </ul>
-   *
-   * <p><b>Note:</b> This setting has no effect when {@link #autoRenew()} is enabled, as the lock
-   * will be automatically renewed and never expire during method execution.
-   *
-   * @return the lease expiration behavior, defaults to LOG_WARNING
+   * @return the failure policy; defaults to {@link OnFailure#THROW}
    */
-  LeaseExpirationBehavior onLeaseExpired() default LeaseExpirationBehavior.LOG_WARNING;
+  OnFailure onFailure() default OnFailure.THROW;
 
   /**
-   * Enables automatic lease renewal using Redisson's watchdog mechanism.
+   * The failure handler, resolved as the single Spring bean of this type. Required when {@link
+   * #onFailure()} is {@link OnFailure#HANDLER} and not allowed otherwise. The default, the {@link
+   * LockFailureHandler} interface itself, means not set.
    *
-   * <p>When enabled, Redisson will automatically extend the lock's lease time approximately every
-   * 10 seconds (lockWatchdogTimeout / 3, where lockWatchdogTimeout defaults to 30 seconds) as long
-   * as the method is executing and the thread is alive. The lock will be released when the method
-   * completes or the thread terminates.
-   *
-   * <p><b>Trade-offs:</b>
-   *
-   * <ul>
-   *   <li><b>Benefit:</b> Eliminates premature lock expiration for long-running operations
-   *   <li><b>Risk:</b> If the method hangs indefinitely, the lock will be held until the thread
-   *       dies or the application shuts down
-   * </ul>
-   *
-   * <p><b>Interaction with other settings:</b>
-   *
-   * <ul>
-   *   <li>When enabled, {@link #leaseTime()} is ignored (a warning is logged if specified)
-   *   <li>When enabled, {@link #onLeaseExpired()} has no effect (a warning is logged if set to
-   *       THROW_EXCEPTION)
-   * </ul>
-   *
-   * <p>Usage example:
-   *
-   * <pre>{@code
-   * @DistributedLock(key = "long-task", autoRenew = true)
-   * public void longRunningTask() {
-   *     // Lock automatically extends during execution
-   *     // Safe for tasks with unpredictable duration
-   * }
-   * }</pre>
-   *
-   * @return true to enable automatic lease renewal, false (default) to use fixed lease time
-   * @since 1.3.0
+   * @return the handler type
    */
-  boolean autoRenew() default false;
+  Class<? extends LockFailureHandler> handler() default LockFailureHandler.class;
 }

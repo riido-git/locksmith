@@ -6,11 +6,11 @@
 
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>3.0.3</version>
+    <version>4.0.0</version>
     <packaging>jar</packaging>
 
     <name>Locksmith Spring Boot Starter</name>
-    <description>A Spring Boot starter for Redis-based distributed locking using annotations</description>
+    <description>A Spring Boot starter for Redis-based distributed locks and semaphores</description>
     <url>https://github.com/riido-git/locksmith</url>
 
     <licenses>
@@ -43,9 +43,8 @@
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Performance test exclusion flags (empty by default for local dev, set in CI to exclude) -->
-        <exclude.performance.tests></exclude.performance.tests>
-        <exclude.virtualthread.tests></exclude.virtualthread.tests>
+        <!-- JUnit tags excluded from the default test run; the slow profile clears it -->
+        <surefire.excludedGroups>slow</surefire.excludedGroups>
 
         <!-- Dependency versions -->
         <spring-boot.version>4.1.1</spring-boot.version>
@@ -79,13 +78,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- AspectJ for @Aspect annotation -->
-        <dependency>
-            <groupId>org.aspectj</groupId>
-            <artifactId>aspectjweaver</artifactId>
-            <scope>provided</scope>
-        </dependency>
-
         <!-- Spring Boot Auto-configuration support -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -108,7 +100,14 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- SLF4J for logging - provided by user's application -->
+        <!-- JSpecify null-safety annotations on every signature -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- SLF4J logging API - provided by user's application -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -129,15 +128,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Testcontainers for integration tests -->
+        <!-- Testcontainers Redis for integration tests -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-testcontainers</artifactId>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -145,11 +139,9 @@
             <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
-
-        <!-- Micrometer test support -->
         <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-test</artifactId>
+            <groupId>com.redis</groupId>
+            <artifactId>testcontainers-redis</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -177,9 +169,11 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
                 <configuration>
                     <release>${java.version}</release>
                     <parameters>true</parameters>
+                    <proc>full</proc>
                 </configuration>
             </plugin>
 
@@ -188,10 +182,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.6.0</version>
                 <configuration>
-                    <excludes>
-                        <exclude>${exclude.performance.tests}</exclude>
-                        <exclude>${exclude.virtualthread.tests}</exclude>
-                    </excludes>
+                    <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                 </configuration>
             </plugin>
 
@@ -219,6 +210,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
+                <version>3.4.0</version>
                 <executions>
                     <execution>
                         <id>attach-sources</id>
@@ -232,6 +224,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.12.0</version>
                 <executions>
                     <execution>
                         <id>attach-javadocs</id>
@@ -242,31 +235,48 @@
                 </executions>
             </plugin>
 
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-gpg-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>sign-artifacts</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>sign</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.sonatype.central</groupId>
-                <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.11.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <publishingServerId>central</publishingServerId>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 
+    <profiles>
+        <!-- Includes tests tagged slow -->
+        <profile>
+            <id>slow</id>
+            <properties>
+                <surefire.excludedGroups></surefire.excludedGroups>
+            </properties>
+        </profile>
 
+        <!-- Signing and publishing to Maven Central -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.11.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

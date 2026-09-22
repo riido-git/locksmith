@@ -1,20 +1,25 @@
 package in.riido.locksmith.autoconfigure;
 
-import in.riido.locksmith.aspect.DistributedLockAspect;
-import in.riido.locksmith.aspect.DistributedSemaphoreAspect;
-import in.riido.locksmith.aspect.RateLimitAspect;
-import in.riido.locksmith.metrics.LockMetrics;
-import in.riido.locksmith.metrics.RateLimitMetrics;
-import in.riido.locksmith.metrics.SemaphoreMetrics;
-import in.riido.locksmith.template.LocksmithLockTemplate;
-import in.riido.locksmith.template.LocksmithRateLimitTemplate;
-import in.riido.locksmith.template.LocksmithSemaphoreTemplate;
+import in.riido.locksmith.aop.LocksmithAdvisor;
+import in.riido.locksmith.aop.LocksmithAutoProxyRegistrar;
+import in.riido.locksmith.aop.LocksmithInterceptor;
+import in.riido.locksmith.aop.MethodSpecFactory;
+import in.riido.locksmith.lock.LockOperations;
+import in.riido.locksmith.metrics.LocksmithMetrics;
+import in.riido.locksmith.metrics.MicrometerLocksmithMetrics;
+import in.riido.locksmith.metrics.NoOpLocksmithMetrics;
+import in.riido.locksmith.semaphore.SemaphoreOperations;
+import in.riido.locksmith.support.AnnotationValidator;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -22,248 +27,200 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Role;
+import org.springframework.core.env.Environment;
 
 /**
- * Autoconfiguration for Locksmith distributed locking and semaphore support.
- *
- * <p>This configuration is automatically applied when:
- *
- * <ul>
- *   <li>Redisson classes are on the classpath
- *   <li>A {@link RedissonClient} bean is available
- * </ul>
- *
- * <p>The user must provide their own {@link RedissonClient} bean. This starter does not
- * autoconfigure Redis connections, giving users full control over their Redis setup.
- *
- * <p>Usage in your application:
- *
- * <pre>{@code
- * @Configuration
- * public class RedisConfig {
- *     @Bean
- *     public RedissonClient redissonClient() {
- *         Config config = new Config();
- *         config.useSingleServer().setAddress("redis://localhost:6379");
- *         return Redisson.create(config);
- *     }
- * }
- * }</pre>
- *
- * @author Garvit Joshi
- * @since 1.0.0
+ * Registers Locksmith when a {@link RedissonClient} bean exists and {@code locksmith.enabled} is
+ * not {@code false}: the operations, the advisor that applies the annotations, the startup
+ * validator, and an auto-proxy creator if the context has none. Logs one INFO line with the
+ * effective settings.
  */
-@AutoConfiguration
+@AutoConfiguration(
+    afterName = {
+      "org.redisson.spring.starter.RedissonAutoConfigurationV2",
+      "org.springframework.boot.micrometer.metrics.autoconfigure"
+          + ".CompositeMeterRegistryAutoConfiguration"
+    })
 @ConditionalOnClass(RedissonClient.class)
 @ConditionalOnBean(RedissonClient.class)
+@ConditionalOnProperty(
+    name = LocksmithAutoConfiguration.ENABLED_PROPERTY,
+    havingValue = "true",
+    matchIfMissing = true)
 @EnableConfigurationProperties(LocksmithProperties.class)
-public class LocksmithAutoConfiguration {
+@Import(LocksmithAutoProxyRegistrar.class)
+@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+public class LocksmithAutoConfiguration implements SmartInitializingSingleton {
+
+  /** Property that switches Locksmith off when {@code false}. */
+  static final String ENABLED_PROPERTY = "locksmith.enabled";
 
   private static final Logger LOG = LoggerFactory.getLogger(LocksmithAutoConfiguration.class);
 
-  /** Default constructor. */
-  public LocksmithAutoConfiguration() {}
+  private static final String UNKNOWN_VERSION = "unknown";
 
   /**
-   * Creates the distributed lock aspect bean.
-   *
-   * <p>This bean is only created when {@code locksmith.lock.enabled} is {@code true} (the default).
-   * Set it to {@code false} to disable the lock aspect entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param applicationContext the Spring application context for handler bean lookup
-   * @param lockMetricsProvider optional lock metrics provider for observability
-   * @return the configured DistributedLockAspect
+   * Registers the Micrometer metrics when a {@link MeterRegistry} bean exists. Declared first, so
+   * its bean is registered before the no-op fallback is considered.
    */
-  @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.lock.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public DistributedLockAspect distributedLockAspect(
-      @NonNull RedissonClient redissonClient,
-      @NonNull LocksmithProperties properties,
-      @NonNull ApplicationContext applicationContext,
-      @NonNull ObjectProvider<LockMetrics> lockMetricsProvider) {
+  @Configuration(proxyBeanMethods = false)
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  @ConditionalOnClass(MeterRegistry.class)
+  @ConditionalOnBean(MeterRegistry.class)
+  static class MicrometerConfiguration {
+
+    @Bean
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    @NonNull LocksmithMetrics micrometerLocksmithMetrics(@NonNull MeterRegistry registry) {
+      return new MicrometerLocksmithMetrics(registry);
+    }
+  }
+
+  private final @NonNull ObjectProvider<LocksmithProperties> properties;
+
+  /**
+   * Creates the configuration. The properties are resolved only in {@link
+   * #afterSingletonsInstantiated()}: this class is created while bean post-processors are still
+   * being registered, and resolving them here would create the properties bean too early.
+   *
+   * @param properties the bound properties, resolved lazily
+   */
+  public LocksmithAutoConfiguration(@NonNull ObjectProvider<LocksmithProperties> properties) {
+    this.properties = properties;
+  }
+
+  /**
+   * Logs the effective settings with the Spring Boot and Redisson versions, once per application
+   * context, after every singleton has been created.
+   */
+  @Override
+  public void afterSingletonsInstantiated() {
+    LocksmithProperties bound = properties.getObject();
     String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
-    String springBootVersion = SpringBootVersion.getVersion();
-    @Nullable LockMetrics lockMetrics = lockMetricsProvider.getIfAvailable();
     LOG.info(
-        "Initializing locksmith lock aspect with Spring Boot {} and Redisson {} - Lock Properties: {}, Metrics: {}",
-        springBootVersion,
-        redissonVersion,
-        properties.lock(),
-        lockMetrics != null ? "enabled" : "disabled");
-    return new DistributedLockAspect(redissonClient, properties, applicationContext, lockMetrics);
+        "Locksmith enabled: key-prefix [{}], semaphore lease-time {}, Spring Boot {}, Redisson {}",
+        bound.keyPrefix(),
+        bound.semaphore().leaseTime(),
+        SpringBootVersion.getVersion(),
+        redissonVersion == null ? UNKNOWN_VERSION : redissonVersion);
   }
 
   /**
-   * Creates the distributed semaphore aspect bean.
+   * The lock operations.
    *
-   * <p>This bean is only created when {@code locksmith.semaphore.enabled} is {@code true} (the
-   * default). Set it to {@code false} to disable the semaphore aspect entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param applicationContext the Spring application context for handler bean lookup
-   * @param semaphoreMetricsProvider optional semaphore metrics provider for observability
-   * @return the configured DistributedSemaphoreAspect
-   * @since 2.0.0
+   * @param redisson the adopter's client
+   * @param properties the bound properties
+   * @param metrics the metrics
+   * @return the operations
    */
   @Bean
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
   @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.semaphore.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public DistributedSemaphoreAspect distributedSemaphoreAspect(
-      @NonNull RedissonClient redissonClient,
+  public @NonNull LockOperations lockOperations(
+      @NonNull RedissonClient redisson,
       @NonNull LocksmithProperties properties,
-      @NonNull ApplicationContext applicationContext,
-      @NonNull ObjectProvider<SemaphoreMetrics> semaphoreMetricsProvider) {
-    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
-    String springBootVersion = SpringBootVersion.getVersion();
-    @Nullable SemaphoreMetrics semaphoreMetrics = semaphoreMetricsProvider.getIfAvailable();
-    LOG.info(
-        "Initializing locksmith semaphore aspect with Spring Boot {} and Redisson {} - Semaphore Properties: {}, Metrics: {}",
-        springBootVersion,
-        redissonVersion,
-        properties.semaphore(),
-        semaphoreMetrics != null ? "enabled" : "disabled");
-    return new DistributedSemaphoreAspect(
-        redissonClient, properties, applicationContext, semaphoreMetrics);
+      @NonNull LocksmithMetrics metrics) {
+    return new LockOperations(redisson, properties, metrics);
   }
 
   /**
-   * Creates the lock template bean for programmatic lock access.
+   * The semaphore operations.
    *
-   * <p>This bean is only created when {@code locksmith.lock.enabled} is {@code true} (the default).
-   * Set it to {@code false} to disable the lock template entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param lockMetricsProvider optional lock metrics provider for observability
-   * @return the configured LocksmithLockTemplate
-   * @since 2.1.0
+   * @param redisson the adopter's client
+   * @param properties the bound properties
+   * @param metrics the metrics
+   * @return the operations
    */
   @Bean
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
   @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.lock.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public LocksmithLockTemplate locksmithLockTemplate(
-      @NonNull RedissonClient redissonClient,
+  public @NonNull SemaphoreOperations semaphoreOperations(
+      @NonNull RedissonClient redisson,
       @NonNull LocksmithProperties properties,
-      @NonNull ObjectProvider<LockMetrics> lockMetricsProvider) {
-    @Nullable LockMetrics lockMetrics = lockMetricsProvider.getIfAvailable();
-    LOG.info(
-        "Initializing locksmith lock template, Metrics: {}",
-        lockMetrics != null ? "enabled" : "disabled");
-    return new LocksmithLockTemplate(redissonClient, properties, lockMetrics);
+      @NonNull LocksmithMetrics metrics) {
+    return new SemaphoreOperations(redisson, properties, metrics);
   }
 
   /**
-   * Creates the semaphore template bean for programmatic semaphore access.
+   * The interceptor that runs annotated methods under their permit and lock.
    *
-   * <p>This bean is only created when {@code locksmith.semaphore.enabled} is {@code true} (the
-   * default). Set it to {@code false} to disable the semaphore template entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param semaphoreMetricsProvider optional semaphore metrics provider for observability
-   * @return the configured LocksmithSemaphoreTemplate
-   * @since 2.1.0
+   * @param lockOperations the lock operations, resolved lazily
+   * @param semaphoreOperations the semaphore operations, resolved lazily
+   * @param methodSpecFactory builds method specs, resolved lazily
+   * @param beanFactory resolves failure handler beans
+   * @return the interceptor
    */
   @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.semaphore.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public LocksmithSemaphoreTemplate locksmithSemaphoreTemplate(
-      @NonNull RedissonClient redissonClient,
-      @NonNull LocksmithProperties properties,
-      @NonNull ObjectProvider<SemaphoreMetrics> semaphoreMetricsProvider) {
-    @Nullable SemaphoreMetrics semaphoreMetrics = semaphoreMetricsProvider.getIfAvailable();
-    LOG.info(
-        "Initializing locksmith semaphore template, Metrics: {}",
-        semaphoreMetrics != null ? "enabled" : "disabled");
-    return new LocksmithSemaphoreTemplate(redissonClient, properties, semaphoreMetrics);
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  public @NonNull LocksmithInterceptor locksmithInterceptor(
+      @NonNull ObjectProvider<LockOperations> lockOperations,
+      @NonNull ObjectProvider<SemaphoreOperations> semaphoreOperations,
+      @NonNull ObjectProvider<MethodSpecFactory> methodSpecFactory,
+      @NonNull BeanFactory beanFactory) {
+    return new LocksmithInterceptor(
+        lockOperations, semaphoreOperations, methodSpecFactory, beanFactory);
   }
 
   /**
-   * Creates the rate limit aspect bean.
+   * The advisor that applies the interceptor to annotated methods. Infrastructure role, because
+   * without AspectJ the auto-proxy creator, Spring Boot's or the one {@link
+   * LocksmithAutoProxyRegistrar} registers, is an {@code InfrastructureAdvisorAutoProxyCreator},
+   * which applies only infrastructure advisors.
    *
-   * <p>This bean is only created when {@code locksmith.rate-limit.enabled} is {@code true} (the
-   * default). Set it to {@code false} to disable the rate limit aspect entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param applicationContext the Spring application context for handler bean lookup
-   * @param rateLimitMetricsProvider optional rate limit metrics provider for observability
-   * @return the configured RateLimitAspect
-   * @since 3.0.0
+   * @param interceptor the interceptor
+   * @return the advisor
    */
   @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.rate-limit.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public RateLimitAspect rateLimitAspect(
-      @NonNull RedissonClient redissonClient,
-      @NonNull LocksmithProperties properties,
-      @NonNull ApplicationContext applicationContext,
-      @NonNull ObjectProvider<RateLimitMetrics> rateLimitMetricsProvider) {
-    String redissonVersion = RedissonClient.class.getPackage().getImplementationVersion();
-    String springBootVersion = SpringBootVersion.getVersion();
-    @Nullable RateLimitMetrics rateLimitMetrics = rateLimitMetricsProvider.getIfAvailable();
-    LOG.info(
-        "Initializing locksmith rate limit aspect with Spring Boot {} and Redisson {} - Rate Limit Properties: {}, Metrics: {}",
-        springBootVersion,
-        redissonVersion,
-        properties.rateLimit(),
-        rateLimitMetrics != null ? "enabled" : "disabled");
-    return new RateLimitAspect(redissonClient, properties, applicationContext, rateLimitMetrics);
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  public @NonNull LocksmithAdvisor locksmithAdvisor(@NonNull LocksmithInterceptor interceptor) {
+    return new LocksmithAdvisor(interceptor);
   }
 
   /**
-   * Creates the rate limit template bean for programmatic rate limit access.
+   * The factory that reads and checks the annotations.
    *
-   * <p>This bean is only created when {@code locksmith.rate-limit.enabled} is {@code true} (the
-   * default). Set it to {@code false} to disable the rate limit template entirely.
-   *
-   * @param redissonClient the Redisson client (must be provided by the user)
-   * @param properties the locksmith configuration properties
-   * @param rateLimitMetricsProvider optional rate limit metrics provider for observability
-   * @return the configured LocksmithRateLimitTemplate
-   * @since 3.0.0
+   * @param environment resolves placeholders
+   * @param properties the bound properties
+   * @return the factory
    */
   @Bean
-  @ConditionalOnMissingBean
-  @ConditionalOnProperty(
-      name = "locksmith.rate-limit.enabled",
-      havingValue = "true",
-      matchIfMissing = true)
-  @NonNull
-  public LocksmithRateLimitTemplate locksmithRateLimitTemplate(
-      @NonNull RedissonClient redissonClient,
-      @NonNull LocksmithProperties properties,
-      @NonNull ObjectProvider<RateLimitMetrics> rateLimitMetricsProvider) {
-    @Nullable RateLimitMetrics rateLimitMetrics = rateLimitMetricsProvider.getIfAvailable();
-    LOG.info(
-        "Initializing locksmith rate limit template, Metrics: {}",
-        rateLimitMetrics != null ? "enabled" : "disabled");
-    return new LocksmithRateLimitTemplate(redissonClient, properties, rateLimitMetrics);
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  public @NonNull MethodSpecFactory methodSpecFactory(
+      @NonNull Environment environment, @NonNull LocksmithProperties properties) {
+    return new MethodSpecFactory(environment, properties);
+  }
+
+  /**
+   * The startup validator. Static, so it is created before ordinary beans without creating this
+   * configuration.
+   *
+   * @param interceptor the interceptor, resolved lazily
+   * @param methodSpecFactory the factory, resolved lazily
+   * @param beanFactory counts handler beans
+   * @return the validator
+   */
+  @Bean
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  public static @NonNull AnnotationValidator annotationValidator(
+      @NonNull ObjectProvider<LocksmithInterceptor> interceptor,
+      @NonNull ObjectProvider<MethodSpecFactory> methodSpecFactory,
+      @NonNull ListableBeanFactory beanFactory) {
+    return new AnnotationValidator(interceptor, methodSpecFactory, beanFactory);
+  }
+
+  /**
+   * The no-op metrics, used when no Micrometer registry exists.
+   *
+   * @return the no-op metrics
+   */
+  @Bean
+  @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+  @ConditionalOnMissingBean(LocksmithMetrics.class)
+  public @NonNull LocksmithMetrics noOpLocksmithMetrics() {
+    return new NoOpLocksmithMetrics();
   }
 }

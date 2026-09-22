@@ -1,2 +1,2 @@
-in.riido.locksmith.autoconfigure.LocksmithMetricsAutoConfiguration
 in.riido.locksmith.autoconfigure.LocksmithAutoConfiguration
+in.riido.locksmith.autoconfigure.LocksmithDisabledAutoConfiguration
