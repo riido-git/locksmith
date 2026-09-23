@@ -19,8 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Acquires distributed locks over Redis. Every lock lives at the Redis key {@code
- * <keyPrefix>lock:<key>}; read and write locks of one key share it.
+ * Acquires distributed locks over Redis. A reentrant lock lives at the Redis key {@code
+ * <keyPrefix>lock:<key>}; read and write locks live at {@code <keyPrefix>rwlock:<key>}, and read
+ * and write locks of one key share it. A reentrant lock and a read or write lock of one key are
+ * therefore separate locks and do not exclude each other.
  *
  * <pre>{@code
  * try (LockHandle lock = locks.key("report:" + id).waitTime(Duration.ofSeconds(5)).acquire()) {
@@ -38,6 +40,9 @@ public class LockOperations {
   private static final Logger LOG = LoggerFactory.getLogger(LockOperations.class);
 
   private static final String KEY_NAMESPACE = "lock:";
+
+  /** Read and write locks get their own namespace: Redisson stores them in another layout. */
+  private static final String READ_WRITE_KEY_NAMESPACE = "rwlock:";
 
   private final @NonNull RedissonClient redisson;
   private final @NonNull LocksmithProperties properties;
@@ -74,15 +79,17 @@ public class LockOperations {
    * Reports whether any thread on any instance holds the lock on a key.
    *
    * @param key the key without prefix
-   * @param type the lock type; {@code READ} and {@code WRITE} report on the shared key
+   * @param type the lock type; {@code REENTRANT} reports on {@code <keyPrefix>lock:<key>}, {@code
+   *     READ} and {@code WRITE} on their shared {@code <keyPrefix>rwlock:<key>}
    * @return {@code true} if the lock is held
    */
   public boolean isLocked(@NonNull String key, @NonNull LockType type) {
-    return getLock(prefix(key), type).isLocked();
+    return getLock(prefix(key, type), type).isLocked();
   }
 
-  private @NonNull String prefix(@NonNull String key) {
-    return properties.keyPrefix() + KEY_NAMESPACE + key;
+  private @NonNull String prefix(@NonNull String key, @NonNull LockType type) {
+    String namespace = type == LockType.REENTRANT ? KEY_NAMESPACE : READ_WRITE_KEY_NAMESPACE;
+    return properties.keyPrefix() + namespace + key;
   }
 
   private @NonNull RLock getLock(@NonNull String fullKey, @NonNull LockType type) {
@@ -159,7 +166,7 @@ public class LockOperations {
      *     unreachable
      */
     public @NonNull LockHandle acquire() {
-      String fullKey = prefix(key);
+      String fullKey = prefix(key, type);
       RLock lock = getLock(fullKey, type);
       long lease = leaseTime == null ? -1 : leaseTime.toMillis();
       long startNanos = System.nanoTime();
@@ -185,9 +192,17 @@ public class LockOperations {
      * The calling thread waits for the outcome. If it is interrupted while waiting, its interrupt
      * flag is restored, the handle is unacquired, and a lock the pending attempt still takes is
      * released again.
+     *
+     * @throws IllegalStateException if called on a Redisson I/O thread ({@code redisson-netty-*}),
+     *     for example inside a callback of a Redisson async call; nothing is sent to Redis then
      */
     @NonNull LockHandle acquire(long ownerId) {
-      String fullKey = prefix(key);
+      // Mirrors the guard of org.redisson.command.CommandAsyncService.get in Redisson 4.7.0.
+      if (Thread.currentThread().getName().startsWith("redisson-netty")) {
+        throw new IllegalStateException(
+            "Sync methods can't be invoked from async/rx/reactive listeners");
+      }
+      String fullKey = prefix(key, type);
       RLock lock = getLock(fullKey, type);
       long lease = leaseTime == null ? -1 : leaseTime.toMillis();
       long startNanos = System.nanoTime();

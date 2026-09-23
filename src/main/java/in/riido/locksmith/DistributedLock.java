@@ -30,7 +30,8 @@ public @interface DistributedLock {
    * The lock key, as a template: literal text with {@code #{...}} SpEL islands whose variables are
    * the method parameters by name, {@code #pN} or {@code #aN}, for example {@code
    * "user:#{#userId}"}; {@code #this} is allowed inside a selection or projection. Must not be
-   * blank. The Redis key is {@code <keyPrefix>lock:<resolved key>}.
+   * blank. The Redis key is {@code <keyPrefix>lock:<resolved key>}, or {@code
+   * <keyPrefix>rwlock:<resolved key>} for read and write locks.
    *
    * @return the key template
    */

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.DistributedSemaphore;
+import in.riido.locksmith.LockType;
 import in.riido.locksmith.LocksmithConfigurationException;
 import in.riido.locksmith.OnFailure;
 import in.riido.locksmith.lock.LockFailureContext;
@@ -153,6 +154,21 @@ class AnnotationValidationTest {
     }
   }
 
+  static class ReentrantOrder {
+    @DistributedLock(key = "order:#{#id}")
+    public void run(String id) {}
+  }
+
+  static class ReadOrder {
+    @DistributedLock(key = "order:#{#id}", type = LockType.READ)
+    public void run(String id) {}
+  }
+
+  static class WriteOrder {
+    @DistributedLock(key = "order:#{#id}", type = LockType.WRITE)
+    public void run(String id) {}
+  }
+
   interface BlankKeyApi {
     @DistributedLock(key = "")
     void run();
@@ -292,6 +308,24 @@ class AnnotationValidationTest {
     }
 
     @Test
+    @DisplayName("on one key text used with REENTRANT and READ, naming both methods and types")
+    void reentrantAndReadOnOneKey() {
+      runner
+          .withBean(ReentrantOrder.class)
+          .withBean(ReadOrder.class)
+          .run(
+              context ->
+                  assertThat(failure(context))
+                      .hasMessageContainingAll(
+                          ReentrantOrder.class.getName() + ".run",
+                          ReadOrder.class.getName() + ".run",
+                          "key [order:#{#id}]",
+                          "REENTRANT",
+                          "READ",
+                          "Pick one kind for that key: REENTRANT, or READ/WRITE."));
+    }
+
+    @Test
     @DisplayName("on semaphore permits 0, with the value")
     void permitsZero() {
       assertFails(PermitsZero.class, "@DistributedSemaphore", "permits [0]", "greater than zero");
@@ -354,6 +388,15 @@ class AnnotationValidationTest {
     runner
         .withBean(MarkerSemaphoreHandler.class)
         .withBean(SemaphoreHandlerPolicy.class)
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName("starts with READ and WRITE on one key text")
+  void startsWithReadAndWriteOnOneKey() {
+    runner
+        .withBean(ReadOrder.class)
+        .withBean(WriteOrder.class)
         .run(context -> assertThat(context).hasNotFailed());
   }
 

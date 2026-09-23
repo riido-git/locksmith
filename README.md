@@ -121,10 +121,14 @@ be negative. `leaseTime`, when set, must be at least one millisecond.
 
 **Lock types.** `REENTRANT` is an exclusive lock that the holding thread may take again, for
 example when an annotated method calls an annotated method of another bean with the same key.
-`READ` is shared: any number of readers hold it while no writer does. `WRITE` excludes readers and other writers. A `READ` and a `WRITE`
-lock with the same key share one Redis key, `locksmith:lock:<key>`, which is what makes them exclude
-each other. Do not use `REENTRANT` and `READ`/`WRITE` on the same key; that combination is not
-supported.
+`READ` is shared: any number of readers hold it while no writer does. `WRITE` excludes readers and other writers. A `REENTRANT`
+lock lives at the Redis key `locksmith:lock:<key>`. `READ` and `WRITE` locks live at
+`locksmith:rwlock:<key>`; a `READ` and a `WRITE` lock with the same key share that one Redis key,
+which is what makes them exclude each other. A `REENTRANT` lock and a `READ`/`WRITE` lock on the same
+key are separate locks and do not exclude each other. Pick one kind per key. When two annotations use
+exactly the same key text, one with `REENTRANT` and one with `READ` or `WRITE`, startup fails with a
+`LocksmithConfigurationException` that names both methods. Keys built from arguments that happen to
+resolve to the same value are not checked; they simply do not coordinate across the two kinds.
 
 **Blank `leaseTime`: renewal.** The lock has no fixed end. Redisson renews it in the background for
 as long as the method runs, and releases it when the method ends. If the JVM dies, renewal stops and
@@ -211,6 +215,9 @@ public CompletableFuture<Receipt> process(String orderId) {
   returns.
 - The lock is owned by a generated id, not by a thread, so it is not reentrant: a nested
   `@DistributedLock` on the same key inside the async work is not acquired, even on the same thread.
+- Call such a method off a Redisson callback thread, for example with `thenComposeAsync`. Called on
+  a Redisson I/O thread (`redisson-netty-*`), it throws `IllegalStateException` before anything is
+  sent to Redis, as Redisson's own synchronous calls do there.
 
 With Spring's `@Async`, the `@Async` interceptor runs first, so Locksmith runs on the worker thread
 and the lock covers the whole method body. That is why a plain `Future` is accepted on an `@Async`
@@ -262,7 +269,7 @@ public class ReportService {
 
 | Call | Meaning |
 |---|---|
-| `key(String)` | starts an acquire; the key has no prefix, Locksmith adds `<prefix>lock:` |
+| `key(String)` | starts an acquire; the key has no prefix, Locksmith adds `<prefix>lock:`, or `<prefix>rwlock:` for `READ` and `WRITE` |
 | `.type(LockType)` | defaults to `REENTRANT` |
 | `.waitTime(Duration)` | defaults to `Duration.ZERO`, try once; negative throws `IllegalArgumentException` |
 | `.leaseTime(Duration)` | a fixed lease, not renewed; not calling it means renewal while held; below one millisecond throws `IllegalArgumentException` |
@@ -337,6 +344,7 @@ when any one of its islands resolves to `null` or a blank string: `order:#{#id}`
 The resolved key is prefixed before it reaches Redis:
 
 - locks: `<prefix>lock:<resolved key>`, for example `locksmith:lock:user:u7`;
+- read and write locks: `<prefix>rwlock:<resolved key>`;
 - semaphores: `<prefix>semaphore:<resolved key>`.
 
 `<prefix>` is `locksmith.key-prefix`, `locksmith:` by default.

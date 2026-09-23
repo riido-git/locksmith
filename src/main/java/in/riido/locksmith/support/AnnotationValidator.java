@@ -2,12 +2,15 @@ package in.riido.locksmith.support;
 
 import in.riido.locksmith.DistributedLock;
 import in.riido.locksmith.DistributedSemaphore;
+import in.riido.locksmith.LockType;
 import in.riido.locksmith.LocksmithConfigurationException;
 import in.riido.locksmith.aop.LocksmithInterceptor;
 import in.riido.locksmith.aop.MethodSpec;
 import in.riido.locksmith.aop.MethodSpecFactory;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ListableBeanFactory;
@@ -35,6 +38,9 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
   private final @NonNull ObjectProvider<MethodSpecFactory> factory;
   private final @NonNull ListableBeanFactory beanFactory;
 
+  /** The first method seen with each {@code @DistributedLock} key text, and its lock type. */
+  private final Map<String, KeyUse> lockKeys = new ConcurrentHashMap<>();
+
   /**
    * Creates the validator. The providers are resolved on the first annotated bean, not here.
    *
@@ -53,7 +59,9 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
 
   /**
    * Builds the spec of every annotated method of the bean's class, checks that each failure handler
-   * type has exactly one bean, and registers the spec with the interceptor.
+   * type has exactly one bean and that no {@code @DistributedLock} key text is used both with
+   * {@code REENTRANT} and with {@code READ} or {@code WRITE}, and registers the spec with the
+   * interceptor.
    *
    * @param bean the initialized bean
    * @param beanName the bean name
@@ -70,6 +78,7 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
       MethodSpec spec = factory.getObject().create(method);
       if (spec.lock() != null) {
         requireSingleHandlerBean(DistributedLock.class, spec.lock().handlerType(), method);
+        requireOneLockKind(spec.lock().key().getExpressionString(), spec.lock().type(), method);
       }
       if (spec.semaphore() != null) {
         requireSingleHandlerBean(
@@ -90,6 +99,39 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
   public int getOrder() {
     return Ordered.LOWEST_PRECEDENCE;
   }
+
+  /**
+   * Fails when a key text is used with {@code REENTRANT} on one method and with {@code READ} or
+   * {@code WRITE} on another: the two kinds live at different Redis keys, so they would not exclude
+   * each other.
+   */
+  private void requireOneLockKind(
+      @NonNull String keyText, @NonNull LockType type, @NonNull Method method) {
+    KeyUse first = lockKeys.putIfAbsent(keyText, new KeyUse(method, type));
+    if (first == null || (first.type() == LockType.REENTRANT) == (type == LockType.REENTRANT)) {
+      return;
+    }
+    throw new LocksmithConfigurationException(
+        "@DistributedLock key ["
+            + keyText
+            + "] is used with "
+            + first.type()
+            + " on "
+            + describe(first.method())
+            + " and with "
+            + type
+            + " on "
+            + describe(method)
+            + "; a REENTRANT lock and a READ/WRITE lock of one key are separate locks and do not"
+            + " exclude each other. Pick one kind for that key: REENTRANT, or READ/WRITE.");
+  }
+
+  private static @NonNull String describe(@NonNull Method method) {
+    return method.getDeclaringClass().getName() + "." + method.getName();
+  }
+
+  /** A method that uses a lock key text, and the lock type it uses it with. */
+  private record KeyUse(@NonNull Method method, @NonNull LockType type) {}
 
   private void requireSingleHandlerBean(
       @NonNull Class<? extends Annotation> annotation,

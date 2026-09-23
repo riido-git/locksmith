@@ -23,6 +23,8 @@ public final class AsyncLockSupport {
    *
    * @param builder the configured acquire
    * @return the handle, acquired or not; release it with {@link #release(LockHandle)}
+   * @throws IllegalStateException if called on a Redisson I/O thread, for example inside a callback
+   *     of a Redisson async call, before anything is sent to Redis
    * @throws RuntimeException any Redisson exception, for example when Redis is unreachable
    */
   public static @NonNull LockHandle acquire(@NonNull LockOperations.Builder builder) {

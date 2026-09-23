@@ -21,7 +21,11 @@ nothing from 3.x is kept for compatibility. Read the migration table before upgr
 - Two Micrometer timers, `locksmith.acquire` and `locksmith.held`, tagged by primitive and outcome.
 - Async methods: a method that returns a `CompletionStage` holds its lock and permit until the
   returned future completes, normally, exceptionally or by cancellation. Reactive return types,
-  Kotlin `suspend` functions and a plain `Future` without `@Async` fail startup.
+  Kotlin `suspend` functions and a plain `Future` without `@Async` fail startup. Such a method
+  called on a Redisson I/O thread throws `IllegalStateException` before anything reaches Redis.
+- Separate Redis key spaces: `REENTRANT` locks at `<keyPrefix>lock:<key>`, `READ` and `WRITE` at
+  `<keyPrefix>rwlock:<key>`. Startup fails when the same `@DistributedLock` key text is used with
+  `REENTRANT` on one method and with `READ` or `WRITE` on another.
 
 ### Removed
 - Rate limiting (`@RateLimit` and everything around it).
@@ -98,7 +102,7 @@ the package named in the 4.0 column.
 | `SemaphoreNotAcquiredException(semaphoreKey, methodName)`, `getSemaphoreKey()`, `getMethodName()` | `(key, permits, waitTime)`, `key()`, `permits()`, `waitTime()`; message `Semaphore [<key>] permit not acquired within <waitTime> (permits <n>)` | Use `key()`. |
 | `locksmith.lock.enabled`, `locksmith.semaphore.enabled` | `locksmith.enabled`, one switch for both; `false` logs one WARN | Replace with `locksmith.enabled`. |
 | `locksmith.lock.key-prefix` (`lock:`), `locksmith.semaphore.key-prefix` (`semaphore:`) | `locksmith.key-prefix` (`locksmith:`) plus a fixed `lock:` or `semaphore:` part | Replace with `locksmith.key-prefix` if you need another prefix. |
-| Redis keys `lock:<key>` and `semaphore:<key>` | `locksmith:lock:<key>` and `locksmith:semaphore:<key>` | 3.x and 4.0 instances do not exclude each other. Do not run both against the same keys at once. |
+| Redis keys `lock:<key>` and `semaphore:<key>` | `locksmith:lock:<key>`, `locksmith:rwlock:<key>` for read and write locks, and `locksmith:semaphore:<key>` | 3.x and 4.0 instances do not exclude each other. Do not run both against the same keys at once. |
 | `locksmith.semaphore.lease-time`: zero or negative replaced by the default | same property and default (5m); a value below one millisecond fails the startup | Set a value of at least `1ms`. |
 | `locksmith.lock.debug`, `locksmith.semaphore.debug` | removed | Set `logging.level.in.riido.locksmith=DEBUG`. |
 | `locksmith.lock.metrics-enabled`, `locksmith.semaphore.metrics-enabled` | removed; metrics are recorded whenever a `MeterRegistry` bean exists | Delete them. |

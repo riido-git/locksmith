@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.redisson.Redisson;
+import org.redisson.api.RBlockingQueue;
 import org.redisson.api.RLock;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
@@ -317,6 +318,38 @@ class AsyncAnnotationPathIntegrationTest {
     }
 
     @Test
+    @DisplayName("called in a Redisson callback: the future fails and no lock is left behind")
+    void refusedOnRedissonThread() {
+      runner.run(
+          context -> {
+            StageOrderService service = context.getBean(StageOrderService.class);
+            // takeAsync completes only after the offer, so the call runs on a Redisson thread.
+            RBlockingQueue<String> trigger =
+                context.getBean(RedissonClient.class).getBlockingQueue("trigger");
+            AtomicReference<String> callingThread = new AtomicReference<>();
+
+            CompletableFuture<String> result =
+                trigger
+                    .takeAsync()
+                    .thenCompose(
+                        ignored -> {
+                          callingThread.set(Thread.currentThread().getName());
+                          return service.process("42", CompletableFuture.completedFuture("done"));
+                        })
+                    .toCompletableFuture();
+            trigger.offer("go");
+
+            assertThatThrownBy(() -> result.get(10, SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .cause()
+                .isExactlyInstanceOf(IllegalStateException.class)
+                .hasMessage("Sync methods can't be invoked from async/rx/reactive listeners");
+            assertThat(callingThread.get()).startsWith("redisson-netty");
+            assertThat(lock.isLocked()).as("lock left behind").isFalse();
+          });
+    }
+
+    @Test
     @DisplayName("lock and permit are released when the future completes normally")
     void releasedOnSuccess() {
       runner.run(
@@ -376,14 +409,17 @@ class AsyncAnnotationPathIntegrationTest {
             context.getBean(StageOrderService.class).processBoth("42", work);
             assertHeld();
 
-            otherInstance
-                .getBucket("trigger")
-                .getAsync()
+            // takeAsync completes only after the offer, so the future completes on a Redisson
+            // thread.
+            RBlockingQueue<String> trigger = otherInstance.getBlockingQueue("trigger");
+            trigger
+                .takeAsync()
                 .thenRun(
                     () -> {
                       completingThread.set(Thread.currentThread().getName());
                       work.complete("done");
                     });
+            trigger.offer("go");
 
             assertReleasedEventually();
             assertThat(completingThread.get()).startsWith("redisson-netty");

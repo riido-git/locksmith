@@ -34,6 +34,7 @@ import org.redisson.client.RedisConnectionException;
 class LockOperationsTest {
 
   private static final String FULL_KEY = "test:lock:k";
+  private static final String READ_WRITE_FULL_KEY = "test:rwlock:k";
 
   private RedissonClient redisson;
   private RLock reentrant;
@@ -50,7 +51,7 @@ class LockOperationsTest {
     writeLock = mock(RLock.class);
     RReadWriteLock readWrite = mock(RReadWriteLock.class);
     when(redisson.getLock(FULL_KEY)).thenReturn(reentrant);
-    when(redisson.getReadWriteLock(FULL_KEY)).thenReturn(readWrite);
+    when(redisson.getReadWriteLock(READ_WRITE_FULL_KEY)).thenReturn(readWrite);
     when(readWrite.readLock()).thenReturn(readLock);
     when(readWrite.writeLock()).thenReturn(writeLock);
     metrics = mock(LocksmithMetrics.class);

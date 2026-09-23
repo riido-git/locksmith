@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.redisson.Redisson;
+import org.redisson.api.RBlockingQueue;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.slf4j.LoggerFactory;
@@ -225,6 +226,30 @@ class LockOperationsIntegrationTest {
         }
       }
     }
+
+    @Test
+    @DisplayName("a held REENTRANT lock neither blocks nor corrupts READ or WRITE on the same key")
+    void reentrantSeparateFromReadWrite() throws Exception {
+      Holder reentrant = new Holder(() -> locks1.key(key).acquire());
+
+      try (LockHandle reader = locks2.key(key).type(LockType.READ).acquire()) {
+        assertThat(reader.acquired()).isTrue();
+      }
+      try (LockHandle writer = locks2.key(key).type(LockType.WRITE).acquire()) {
+        assertThat(writer.acquired()).isTrue();
+        assertThat(writer.key()).isEqualTo("locksmith:rwlock:" + key);
+        assertThat(client2.getKeys().countExists("locksmith:lock:" + key)).isEqualTo(1);
+        assertThat(client2.getKeys().countExists("locksmith:rwlock:" + key)).isEqualTo(1);
+      }
+
+      assertThat(locks2.isLocked(key, LockType.REENTRANT)).isTrue();
+      assertThat(locks2.isLocked(key, LockType.WRITE)).isFalse();
+      try (LockHandle otherClient = locks2.key(key).acquire()) {
+        assertThat(otherClient.acquired()).isFalse();
+      }
+      reentrant.release();
+      assertThat(locks2.isLocked(key, LockType.REENTRANT)).isFalse();
+    }
   }
 
   @Nested
@@ -362,6 +387,41 @@ class LockOperationsIntegrationTest {
   @Nested
   @DisplayName("owned by a generated id")
   class Owned {
+
+    @Test
+    @DisplayName("on a Redisson I/O thread: throws at once and sends nothing to Redis")
+    void refusedOnRedissonThread() throws Exception {
+      record Attempt(String thread, Duration took, Throwable failure) {}
+      // takeAsync completes only after the offer below, so the callback runs on a Redisson thread.
+      RBlockingQueue<String> trigger = client1.getBlockingQueue(key + ":trigger");
+      CompletableFuture<Attempt> result =
+          trigger
+              .takeAsync()
+              .thenApply(
+                  ignored -> {
+                    long start = System.nanoTime();
+                    Throwable failure = null;
+                    try {
+                      AsyncLockSupport.acquire(locks1.key(key));
+                    } catch (RuntimeException e) {
+                      failure = e;
+                    }
+                    return new Attempt(
+                        Thread.currentThread().getName(),
+                        Duration.ofNanos(System.nanoTime() - start),
+                        failure);
+                  })
+              .toCompletableFuture();
+      trigger.offer("go");
+      Attempt attempt = result.get(10, SECONDS);
+
+      assertThat(attempt.thread()).startsWith("redisson-netty");
+      assertThat(attempt.failure())
+          .isExactlyInstanceOf(IllegalStateException.class)
+          .hasMessage("Sync methods can't be invoked from async/rx/reactive listeners");
+      assertThat(attempt.took()).isLessThan(Duration.ofMillis(500));
+      assertThat(locks2.isLocked(key, LockType.REENTRANT)).isFalse();
+    }
 
     @Test
     @DisplayName("released from another thread, where a thread-owned lock would fail")
