@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: 'temurin'
+          cache: maven
+          server-id: central
+          server-username-env-var: CENTRAL_USERNAME
+          server-password-env-var: CENTRAL_TOKEN
+
+      - name: Publish to Maven Central
+        run: mvn -B deploy -Prelease -Dgpg.signer=bc -DautoPublish=true -DwaitUntil=PUBLISHED --file pom.xml
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
