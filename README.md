@@ -131,6 +131,9 @@ The [wiki](https://github.com/riido-git/locksmith/wiki) covers everything else, 
 - [Limitations](https://github.com/riido-git/locksmith/wiki/Limitations): what Locksmith does not
   guarantee, and what to do about it.
 
+[locksmith-demo](https://github.com/riido-git/locksmith-demo) is a Spring Boot app that shows every
+feature through REST endpoints, with tests, a stress test and a load test.
+
 ## License
 
 Apache License 2.0; see [LICENSE](LICENSE).
