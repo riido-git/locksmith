@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- One ERROR line on each call of an annotated method that returns work still pending, which then
+  runs after the lock or permit is released: a value startup cannot see because the method declares
+  a wider type, such as a `Callable` or an `SseEmitter` returned as `Object`, an `SseEmitter` or a
+  `Mono` inside a `ResponseEntity<?>`, or a future that has not completed, also one an `@Async`
+  method returns. The line names the method, the returned type and the key, and links to the wiki
+  page on rejected return types. The call still returns the value.
+
+### Fixed
+- Startup fails for an annotated method whose return type Spring MVC runs after the method returns:
+  `Callable`, `WebAsyncTask`, `DeferredResult`, `StreamingResponseBody`, `ResponseBodyEmitter` and
+  its subclasses such as `SseEmitter`, a `ResponseEntity` of a `StreamingResponseBody`, an emitter,
+  a `CompletionStage` or a reactive type, and any reactive type Spring's `ReactiveAdapterRegistry`
+  adapts, such as RxJava's `Single`. Kotlin's `Flow` and `Deferred` fail startup too, with or
+  without `kotlinx-coroutines-reactor`. In 4.0.0 such a method started, and its work ran after the
+  lock or permit was released.
+
 ## [4.0.0] - 2026-10-11
 
 A ground-up rewrite. The API, the properties, the metrics and the Redis keys change, and nothing

@@ -17,11 +17,18 @@ import in.riido.locksmith.lock.LockFailureHandler;
 import in.riido.locksmith.semaphore.SemaphoreFailureContext;
 import in.riido.locksmith.semaphore.SemaphoreFailureHandler;
 import in.riido.locksmith.support.KeyTemplate;
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.core.Single;
+import java.io.OutputStream;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
@@ -29,13 +36,23 @@ import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
+import kotlinx.coroutines.Deferred;
+import kotlinx.coroutines.flow.StateFlow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.reactivestreams.Publisher;
+import org.springframework.core.ReactiveAdapterRegistry;
 import org.springframework.expression.ParseException;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.context.request.async.WebAsyncTask;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -551,6 +568,12 @@ class MethodSpecFactoryTest {
   /** A {@code CompletionStage} subtype that a completed {@code CompletableFuture} is not. */
   static class CustomFuture<T> extends CompletableFuture<T> {}
 
+  /** A {@code StreamingResponseBody} implementation, found through its interfaces. */
+  static class FileBody implements StreamingResponseBody {
+    @Override
+    public void writeTo(OutputStream outputStream) {}
+  }
+
   @SuppressWarnings("unused")
   static class ReturnTypes {
     @DistributedLock(key = "k")
@@ -666,6 +689,191 @@ class MethodSpecFactoryTest {
     Future<String> metaAsyncFuture() {
       return null;
     }
+
+    @DistributedLock(key = "k")
+    Callable<String> callable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    WebAsyncTask<String> webAsyncTask() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    DeferredResult<String> deferredResult() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    StreamingResponseBody streamingResponseBody() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseBodyEmitter responseBodyEmitter() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    SseEmitter sseEmitter() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    FileBody fileBody() {
+      return null;
+    }
+
+    @DistributedSemaphore(key = "k", permits = "1")
+    Callable<String> semaphoreCallable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<StreamingResponseBody> entityOfStreamingResponseBody() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<ResponseBodyEmitter> entityOfResponseBodyEmitter() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<SseEmitter> entityOfSseEmitter() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Mono<String>> entityOfMono() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Flux<String>> entityOfFlux() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Publisher<String>> entityOfPublisher() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Flow.Publisher<String>> entityOfFlowPublisher() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<CompletionStage<String>> entityOfCompletionStage() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<CompletableFuture<String>> entityOfCompletableFuture() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Flowable<String>> entityOfFlowable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Observable<String>> entityOfObservable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Single<String>> entityOfSingle() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Maybe<String>> entityOfMaybe() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Completable> entityOfCompletable() {
+      return null;
+    }
+
+    @DistributedSemaphore(key = "k", permits = "1")
+    ResponseEntity<SseEmitter> semaphoreEntityOfSseEmitter() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Flowable<String> flowable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Observable<String> observable() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Single<String> single() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Maybe<String> maybe() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Completable completable() {
+      return null;
+    }
+
+    @DistributedSemaphore(key = "k", permits = "1")
+    Single<String> semaphoreSingle() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    kotlinx.coroutines.flow.Flow<String> kotlinFlow() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    StateFlow<String> kotlinStateFlow() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Deferred<String> kotlinDeferred() {
+      return null;
+    }
+
+    @DistributedSemaphore(key = "k", permits = "1")
+    kotlinx.coroutines.flow.Flow<String> semaphoreKotlinFlow() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    String plainValue() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<String> entityOfString() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    HttpEntity<StreamingResponseBody> httpEntityOfStreamingResponseBody() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ResponseEntity<Callable<String>> entityOfCallable() {
+      return null;
+    }
   }
 
   @Async
@@ -739,6 +947,8 @@ class MethodSpecFactoryTest {
     private static final String SEMAPHORE_PREFIX =
         "@DistributedSemaphore on " + ReturnTypes.class.getName() + ".";
 
+    private static final String STRING = String.class.getName();
+
     private static Method returnTypes(String name) {
       return Arrays.stream(ReturnTypes.class.getDeclaredMethods())
           .filter(m -> m.getName().equals(name))
@@ -776,6 +986,25 @@ class MethodSpecFactoryTest {
           + ": @Async methods can return only void, Kotlin Unit, Future or CompletableFuture, got ["
           + type.getName()
           + "]; Spring's @Async proxy fails every call of any other return type";
+    }
+
+    private static String runsAfterRelease(String prefix, String name, String type) {
+      return prefix
+          + name
+          + ": return type "
+          + type
+          + " runs its work after the lock is released, which happens when the method returns;"
+          + " put the annotation on the method that does the work, such as a service method"
+          + " called inside the Callable";
+    }
+
+    /** The name of a generic type with one type argument, as the message spells it. */
+    private static String generic(Class<?> type, String argument) {
+      return type.getName() + "<" + argument + ">";
+    }
+
+    private static String entityOf(String body) {
+      return generic(ResponseEntity.class, body);
     }
 
     @Test
@@ -858,6 +1087,159 @@ class MethodSpecFactoryTest {
       assertThat(factory.create(returnTypes("metaAsyncFuture")).lock()).isNotNull();
       assertThat(factory.create(AsyncReturnTypes.class.getDeclaredMethod("future")).lock())
           .isNotNull();
+    }
+
+    @Test
+    @DisplayName(
+        "rejects Callable, WebAsyncTask, DeferredResult, StreamingResponseBody and a class"
+            + " implementing it, ResponseBodyEmitter and SseEmitter, which Spring MVC runs after"
+            + " the method returns, for both annotations")
+    void rejectsMvcAsyncTypes() {
+      assertRejectedWith(
+          "callable", runsAfterRelease(LOCK_PREFIX, "callable", generic(Callable.class, STRING)));
+      assertRejectedWith(
+          "webAsyncTask",
+          runsAfterRelease(LOCK_PREFIX, "webAsyncTask", generic(WebAsyncTask.class, STRING)));
+      assertRejectedWith(
+          "deferredResult",
+          runsAfterRelease(LOCK_PREFIX, "deferredResult", generic(DeferredResult.class, STRING)));
+      assertRejectedWith(
+          "streamingResponseBody",
+          runsAfterRelease(
+              LOCK_PREFIX, "streamingResponseBody", StreamingResponseBody.class.getName()));
+      assertRejectedWith(
+          "responseBodyEmitter",
+          runsAfterRelease(
+              LOCK_PREFIX, "responseBodyEmitter", ResponseBodyEmitter.class.getName()));
+      assertRejectedWith(
+          "sseEmitter", runsAfterRelease(LOCK_PREFIX, "sseEmitter", SseEmitter.class.getName()));
+      assertRejectedWith(
+          "fileBody", runsAfterRelease(LOCK_PREFIX, "fileBody", FileBody.class.getName()));
+      assertRejectedWith(
+          "semaphoreCallable",
+          runsAfterRelease(SEMAPHORE_PREFIX, "semaphoreCallable", generic(Callable.class, STRING)));
+    }
+
+    @Test
+    @DisplayName(
+        "rejects a ResponseEntity of a StreamingResponseBody, an emitter, a CompletionStage or a"
+            + " reactive type, naming the full generic type, for both annotations")
+    void rejectsResponseEntityOfLaterWork() {
+      assertRejectedWith(
+          "entityOfStreamingResponseBody",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityOfStreamingResponseBody",
+              entityOf(StreamingResponseBody.class.getName())));
+      assertRejectedWith(
+          "entityOfResponseBodyEmitter",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityOfResponseBodyEmitter",
+              entityOf(ResponseBodyEmitter.class.getName())));
+      assertRejectedWith(
+          "entityOfSseEmitter",
+          runsAfterRelease(
+              LOCK_PREFIX, "entityOfSseEmitter", entityOf(SseEmitter.class.getName())));
+      assertRejectedWith(
+          "entityOfMono",
+          runsAfterRelease(LOCK_PREFIX, "entityOfMono", entityOf(generic(Mono.class, STRING))));
+      assertRejectedWith(
+          "entityOfFlux",
+          runsAfterRelease(LOCK_PREFIX, "entityOfFlux", entityOf(generic(Flux.class, STRING))));
+      assertRejectedWith(
+          "entityOfPublisher",
+          runsAfterRelease(
+              LOCK_PREFIX, "entityOfPublisher", entityOf(generic(Publisher.class, STRING))));
+      assertRejectedWith(
+          "entityOfFlowPublisher",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityOfFlowPublisher",
+              entityOf(generic(Flow.Publisher.class, STRING))));
+      assertRejectedWith(
+          "entityOfCompletionStage",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityOfCompletionStage",
+              entityOf(generic(CompletionStage.class, STRING))));
+      assertRejectedWith(
+          "entityOfCompletableFuture",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityOfCompletableFuture",
+              entityOf(generic(CompletableFuture.class, STRING))));
+      assertRejectedWith(
+          "entityOfFlowable",
+          runsAfterRelease(
+              LOCK_PREFIX, "entityOfFlowable", entityOf(generic(Flowable.class, STRING))));
+      assertRejectedWith(
+          "entityOfObservable",
+          runsAfterRelease(
+              LOCK_PREFIX, "entityOfObservable", entityOf(generic(Observable.class, STRING))));
+      assertRejectedWith(
+          "entityOfSingle",
+          runsAfterRelease(LOCK_PREFIX, "entityOfSingle", entityOf(generic(Single.class, STRING))));
+      assertRejectedWith(
+          "entityOfMaybe",
+          runsAfterRelease(LOCK_PREFIX, "entityOfMaybe", entityOf(generic(Maybe.class, STRING))));
+      assertRejectedWith(
+          "entityOfCompletable",
+          runsAfterRelease(
+              LOCK_PREFIX, "entityOfCompletable", entityOf(Completable.class.getName())));
+      assertRejectedWith(
+          "semaphoreEntityOfSseEmitter",
+          runsAfterRelease(
+              SEMAPHORE_PREFIX,
+              "semaphoreEntityOfSseEmitter",
+              entityOf(SseEmitter.class.getName())));
+    }
+
+    @Test
+    @DisplayName(
+        "rejects RxJava's Flowable, Observable, Single, Maybe and Completable, which Spring's"
+            + " ReactiveAdapterRegistry adapts, for both annotations")
+    void rejectsAdaptedReactiveTypes() {
+      assertRejectedWith("flowable", reactive(LOCK_PREFIX, "flowable", Flowable.class));
+      assertRejectedWith("observable", reactive(LOCK_PREFIX, "observable", Observable.class));
+      assertRejectedWith("single", reactive(LOCK_PREFIX, "single", Single.class));
+      assertRejectedWith("maybe", reactive(LOCK_PREFIX, "maybe", Maybe.class));
+      assertRejectedWith("completable", reactive(LOCK_PREFIX, "completable", Completable.class));
+      assertRejectedWith(
+          "semaphoreSingle", reactive(SEMAPHORE_PREFIX, "semaphoreSingle", Single.class));
+    }
+
+    @Test
+    @DisplayName(
+        "rejects Kotlin's Flow, a StateFlow and Deferred by name, which Spring's registry knows"
+            + " only with kotlinx-coroutines-reactor, for both annotations")
+    void rejectsKotlinFlowAndDeferred() {
+      // kotlinx-coroutines-reactor is not on the test classpath, so only the name check applies.
+      assertThat(
+              ReactiveAdapterRegistry.getSharedInstance()
+                  .getAdapter(kotlinx.coroutines.flow.Flow.class))
+          .isNull();
+
+      assertRejectedWith(
+          "kotlinFlow", reactive(LOCK_PREFIX, "kotlinFlow", kotlinx.coroutines.flow.Flow.class));
+      assertRejectedWith(
+          "kotlinStateFlow", reactive(LOCK_PREFIX, "kotlinStateFlow", StateFlow.class));
+      assertRejectedWith("kotlinDeferred", reactive(LOCK_PREFIX, "kotlinDeferred", Deferred.class));
+      assertRejectedWith(
+          "semaphoreKotlinFlow",
+          reactive(SEMAPHORE_PREFIX, "semaphoreKotlinFlow", kotlinx.coroutines.flow.Flow.class));
+    }
+
+    @Test
+    @DisplayName(
+        "accepts a plain value, ResponseEntity<String>, HttpEntity<StreamingResponseBody> and"
+            + " ResponseEntity<Callable>, which Spring MVC does not run later")
+    void acceptsWhatMvcDoesNotRunLater() {
+      assertThat(factory.create(returnTypes("plainValue")).lock()).isNotNull();
+      assertThat(factory.create(returnTypes("entityOfString")).lock()).isNotNull();
+      assertThat(factory.create(returnTypes("httpEntityOfStreamingResponseBody")).lock())
+          .isNotNull();
+      assertThat(factory.create(returnTypes("entityOfCallable")).lock()).isNotNull();
     }
   }
 }

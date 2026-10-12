@@ -16,6 +16,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
@@ -23,11 +24,14 @@ import java.util.concurrent.Future;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.convert.DurationStyle;
+import org.springframework.core.ReactiveAdapterRegistry;
+import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ParseException;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.util.ReflectionUtils;
 
 /**
  * Reads the Locksmith annotations of a method, checks every rule and builds its {@link MethodSpec}.
@@ -43,6 +47,14 @@ public class MethodSpecFactory {
   /** Matched by name, so Reactive Streams need not be on the classpath. */
   private static final String REACTIVE_STREAMS_PUBLISHER = "org.reactivestreams.Publisher";
 
+  /**
+   * Kotlin's flow and deferred value, matched by name like the publisher: Spring's reactive adapter
+   * registry knows them only when kotlinx-coroutines-reactor is present.
+   */
+  private static final String KOTLIN_FLOW = "kotlinx.coroutines.flow.Flow";
+
+  private static final String KOTLIN_DEFERRED = "kotlinx.coroutines.Deferred";
+
   /** The last parameter of a Kotlin suspend function; matched by name, like the publisher. */
   private static final String KOTLIN_CONTINUATION = "kotlin.coroutines.Continuation";
 
@@ -51,6 +63,21 @@ public class MethodSpecFactory {
    * that type; matched by name, as Spring's {@code @Async} matches it.
    */
   private static final String KOTLIN_UNIT = "kotlin.Unit";
+
+  /** Spring MVC's types, matched by name like the publisher, so Spring MVC need not be present. */
+  private static final String WEB_ASYNC_TASK =
+      "org.springframework.web.context.request.async.WebAsyncTask";
+
+  private static final String DEFERRED_RESULT =
+      "org.springframework.web.context.request.async.DeferredResult";
+
+  private static final String STREAMING_RESPONSE_BODY =
+      "org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody";
+
+  private static final String RESPONSE_BODY_EMITTER =
+      "org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter";
+
+  private static final String RESPONSE_ENTITY = "org.springframework.http.ResponseEntity";
 
   private final @NonNull Environment environment;
   private final @NonNull LocksmithProperties properties;
@@ -292,11 +319,12 @@ public class MethodSpecFactory {
 
   /**
    * Rejects a method whose work can outlive its return, since the lock is released on return: a
-   * reactive return type, a Kotlin suspend function, and a {@link Future} or {@link
-   * CompletionStage}, unless Spring's {@code @Async} runs the whole method under the lock on its
-   * worker thread. Also rejects an {@code @Async} method that returns anything but {@code void},
-   * Kotlin's {@code Unit}, {@link Future} or {@link CompletableFuture}, the only types Spring's
-   * {@code @Async} can return: any other type fails every call.
+   * reactive return type, a Kotlin suspend function, a type Spring MVC runs after the method
+   * returns, and a {@link Future} or {@link CompletionStage}, unless Spring's {@code @Async} runs
+   * the whole method under the lock on its worker thread. Also rejects an {@code @Async} method
+   * that returns anything but {@code void}, Kotlin's {@code Unit}, {@link Future} or {@link
+   * CompletableFuture}, the only types Spring's {@code @Async} can return: any other type fails
+   * every call.
    */
   private static void checkReturnType(
       @NonNull Class<? extends Annotation> type, @NonNull Method method) {
@@ -309,7 +337,9 @@ public class MethodSpecFactory {
           method,
           "Kotlin suspend functions are not supported; use a function that is not suspend");
     }
-    if (isReactive(returnType)) {
+    // Spring's reactive adapter registry adapts CompletionStage too, which the @Async rule judges.
+    if (isReactive(returnType)
+        || (!CompletionStage.class.isAssignableFrom(returnType) && isAdapted(returnType))) {
       throw error(
           type,
           method,
@@ -339,7 +369,123 @@ public class MethodSpecFactory {
               + " would let the work outlive the lock, which is released when the method returns;"
               + " mark the method @Async and declare Future or CompletableFuture, so the lock"
               + " covers its body on the worker thread");
+    } else if (runsAfterReturn(method)) {
+      throw error(
+          type,
+          method,
+          "return type "
+              + method.getGenericReturnType().getTypeName()
+              + " runs its work after the lock is released, which happens when the method"
+              + " returns; put the annotation on the method that does the work, such as a"
+              + " service method called inside the Callable");
     }
+  }
+
+  /**
+   * Whether Spring MVC, by the rules of its return value handlers, runs the work of a handler with
+   * this method's return type after the handler returns: a {@link Callable}, {@code WebAsyncTask},
+   * {@code DeferredResult}, {@code StreamingResponseBody} or {@code ResponseBodyEmitter}, and a
+   * {@code ResponseEntity} of a {@code StreamingResponseBody}, an emitter or a type the reactive
+   * adapter registry adapts. Spring MVC also runs a returned {@link CompletionStage} later, which
+   * the {@code @Async} rule judges.
+   */
+  private static boolean runsAfterReturn(@NonNull Method method) {
+    Class<?> type = method.getReturnType();
+    if (Callable.class.isAssignableFrom(type)
+        || isSubtypeOf(type, WEB_ASYNC_TASK)
+        || isSubtypeOf(type, DEFERRED_RESULT)
+        || isStreamed(type)) {
+      return true;
+    }
+    if (!isSubtypeOf(type, RESPONSE_ENTITY)) {
+      return false;
+    }
+    Class<?> body = ResolvableType.forMethodReturnType(method).getGeneric().resolve();
+    return body != null && (isStreamed(body) || isAdapted(body));
+  }
+
+  /** A {@code StreamingResponseBody}, or a {@code ResponseBodyEmitter} such as an SSE emitter. */
+  private static boolean isStreamed(@NonNull Class<?> type) {
+    return isSubtypeOf(type, STREAMING_RESPONSE_BODY) || isSubtypeOf(type, RESPONSE_BODY_EMITTER);
+  }
+
+  /** Whether the shared registry Spring MVC consults adapts the type to a reactive publisher. */
+  private static boolean isAdapted(@NonNull Class<?> type) {
+    return ReactiveAdapterRegistry.getSharedInstance().getAdapter(type) != null;
+  }
+
+  /** Whether the type is, extends or implements the type of that name. */
+  private static boolean isSubtypeOf(@Nullable Class<?> type, @NonNull String name) {
+    if (type == null) {
+      return false;
+    }
+    if (type.getName().equals(name) || isSubtypeOf(type.getSuperclass(), name)) {
+      return true;
+    }
+    for (Class<?> parent : type.getInterfaces()) {
+      if (isSubtypeOf(parent, name)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Names a value an annotated method returned when work behind it is still pending, so that the
+   * work runs after the lock and permit are released; null for any other value. The startup check
+   * judges the declared return type, which a wider type such as {@code Object} or {@code
+   * ResponseEntity<?>} hides; this judges the value with the same rules, and a {@code
+   * ResponseEntity} by the class of its body, as Spring MVC does. A completed future, which is what
+   * an {@code @Async} method body returns, is not pending.
+   *
+   * @param value what the method returned
+   * @return the value's type, or null when no work is pending
+   */
+  static @Nullable String pendingWork(@Nullable Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (isPending(value)) {
+      return nameOf(value.getClass());
+    }
+    if (isSubtypeOf(value.getClass(), RESPONSE_ENTITY)) {
+      Method getBody = ReflectionUtils.findMethod(value.getClass(), "getBody");
+      Object body = getBody == null ? null : ReflectionUtils.invokeMethod(getBody, value);
+      if (body != null
+          && (isSubtypeOf(body.getClass(), RESPONSE_BODY_EMITTER) || isAdapted(body.getClass()))
+          && isPending(body)) {
+        return value.getClass().getName() + " of " + nameOf(body.getClass());
+      }
+    }
+    return null;
+  }
+
+  private static boolean isPending(@NonNull Object value) {
+    if (value instanceof CompletionStage<?> stage) {
+      // Not isDone: the JDK's minimal stage is a Future whose isDone throws.
+      try {
+        return !stage.toCompletableFuture().isDone();
+      } catch (UnsupportedOperationException e) {
+        return true;
+      }
+    }
+    if (value instanceof Future<?> future) {
+      return !future.isDone();
+    }
+    Class<?> type = value.getClass();
+    return value instanceof Callable<?>
+        || isReactive(type)
+        || isAdapted(type)
+        || isSubtypeOf(type, WEB_ASYNC_TASK)
+        || isSubtypeOf(type, DEFERRED_RESULT)
+        || isStreamed(type);
+  }
+
+  /** The class name, or for a lambda the interface it implements. */
+  private static @NonNull String nameOf(@NonNull Class<?> type) {
+    return type.isHidden() && type.getInterfaces().length > 0
+        ? type.getInterfaces()[0].getName()
+        : type.getName();
   }
 
   private static boolean isReactive(@Nullable Class<?> type) {
@@ -348,6 +494,8 @@ public class MethodSpecFactory {
     }
     if (Flow.Publisher.class.isAssignableFrom(type)
         || type.getName().equals(REACTIVE_STREAMS_PUBLISHER)
+        || type.getName().equals(KOTLIN_FLOW)
+        || type.getName().equals(KOTLIN_DEFERRED)
         || isReactive(type.getSuperclass())) {
       return true;
     }

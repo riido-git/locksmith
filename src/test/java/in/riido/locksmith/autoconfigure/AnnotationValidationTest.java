@@ -17,6 +17,7 @@ import in.riido.locksmith.semaphore.SemaphoreFailureHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Proxy;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,8 @@ import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 /** Startup validation: a misconfigured annotation fails the context refresh. */
@@ -182,6 +185,15 @@ class AnnotationValidationTest {
     @DistributedLock(key = "k")
     public Mono<String> run() {
       return null;
+    }
+  }
+
+  @RestController
+  static class CallableController {
+    @GetMapping("/report")
+    @DistributedLock(key = "report")
+    public Callable<String> run() {
+      return () -> "report";
     }
   }
 
@@ -523,6 +535,24 @@ class AnnotationValidationTest {
     @DisplayName("on a reactive return type")
     void reactiveReturn() {
       assertFails(ReactiveReturn.class, "reactive return types are not supported");
+    }
+
+    @Test
+    @DisplayName(
+        "on a @RestController handler that returns a Callable, which Spring MVC runs later")
+    void callableHandler() {
+      runner
+          .withBean(CallableController.class)
+          .run(
+              context ->
+                  assertThat(failure(context))
+                      .hasMessage(
+                          "@DistributedLock on "
+                              + CallableController.class.getName()
+                              + ".run: return type java.util.concurrent.Callable<java.lang.String>"
+                              + " runs its work after the lock is released, which happens when"
+                              + " the method returns; put the annotation on the method that does"
+                              + " the work, such as a service method called inside the Callable"));
     }
 
     @Test

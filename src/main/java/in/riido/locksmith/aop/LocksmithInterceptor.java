@@ -20,6 +20,8 @@ import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -38,6 +40,11 @@ import org.springframework.util.function.SingletonSupplier;
  * RedissonClient} too early for every post-processor to apply to them.
  */
 public class LocksmithInterceptor implements MethodInterceptor {
+
+  private static final Logger LOG = LoggerFactory.getLogger(LocksmithInterceptor.class);
+
+  private static final String RETURN_TYPES_WIKI =
+      "https://github.com/riido-git/locksmith/wiki/Limitations#return-types-that-are-rejected";
 
   private final @NonNull SingletonSupplier<LockOperations> lockOperations;
   private final @NonNull SingletonSupplier<SemaphoreOperations> semaphoreOperations;
@@ -68,7 +75,8 @@ public class LocksmithInterceptor implements MethodInterceptor {
    * Acquires the permit, then the lock, of the invoked method, proceeds, and releases the lock and
    * then the permit whether the method returns or throws. When either is not acquired, the method
    * does not run, a permit already held is released, and the failure policy of the annotation that
-   * failed decides the result.
+   * failed decides the result. When the method returns work that is still pending, such as a {@code
+   * Callable} declared as {@code Object}, it logs an ERROR on each call and returns the value.
    *
    * @param invocation the intercepted call
    * @return the method result, or the failure policy result
@@ -109,9 +117,44 @@ public class LocksmithInterceptor implements MethodInterceptor {
           }
           return lockFailure(lock, held.key(), method, args);
         }
-        return invocation.proceed();
+        Object result = invocation.proceed();
+        String pending = MethodSpecFactory.pendingWork(result);
+        if (pending != null) {
+          logPendingWork(method, pending, held, permit);
+        }
+        return result;
       }
     }
+  }
+
+  /**
+   * Logs a call that returned work still pending, which runs after the lock and permit are
+   * released: startup refuses such a declared return type, but not one as wide as {@code Object}.
+   */
+  private static void logPendingWork(
+      @NonNull Method method,
+      @NonNull String pending,
+      @Nullable LockHandle held,
+      @Nullable PermitHandle permit) {
+    String annotations =
+        held == null
+            ? "@DistributedSemaphore"
+            : permit == null ? "@DistributedLock" : "@DistributedLock and @DistributedSemaphore";
+    String releases =
+        held == null
+            ? "permit [" + permit.key() + "]"
+            : permit == null
+                ? "lock [" + held.key() + "]"
+                : "lock [" + held.key() + "] and permit [" + permit.key() + "]";
+    LOG.error(
+        "{} on {}.{} returned {}, whose work runs after Locksmith releases {}, so that work runs"
+            + " without coordination; put the annotation on the method that does the work. See {}",
+        annotations,
+        method.getDeclaringClass().getName(),
+        method.getName(),
+        pending,
+        releases,
+        RETURN_TYPES_WIKI);
   }
 
   private @NonNull PermitHandle acquire(
