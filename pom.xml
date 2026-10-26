@@ -47,7 +47,7 @@
         <surefire.excludedGroups>slow</surefire.excludedGroups>
 
         <!-- Dependency versions -->
-        <spring-boot.version>4.1.1</spring-boot.version>
+        <spring-boot.version>4.1.2</spring-boot.version>
         <redisson.version>4.8.0</redisson.version>
     </properties>
 
