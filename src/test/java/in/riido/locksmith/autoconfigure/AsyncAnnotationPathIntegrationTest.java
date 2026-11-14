@@ -117,6 +117,16 @@ class AsyncAnnotationPathIntegrationTest {
     }
   }
 
+  static class InheritedOrderService {
+    @DistributedLock(key = "order:#{#id}")
+    public Future<String> process(String id) throws InterruptedException {
+      return CompletableFuture.completedFuture(block(id));
+    }
+  }
+
+  @Async
+  static class AsyncInheritedOrderService extends InheritedOrderService {}
+
   /** The JVM signature of Kotlin's {@code fun process(id: String): Unit?}. */
   static class AsyncUnitService {
     @Async
@@ -158,6 +168,29 @@ class AsyncAnnotationPathIntegrationTest {
               .doesNotEndWith(Thread.currentThread().getName());
           assertLockReleasedEventually();
         });
+  }
+
+  @Test
+  @DisplayName("class-level @Async: the lock covers an inherited method on the worker thread")
+  void inheritedAsyncFutureHoldsLockForBody() {
+    runner
+        .withBean(AsyncInheritedOrderService.class)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              AsyncInheritedOrderService service =
+                  context.getBean(AsyncInheritedOrderService.class);
+
+              Future<String> result = service.process("42");
+              assertThat(started.await(10, SECONDS)).isTrue();
+              assertThat(lock.tryLock()).isFalse();
+
+              finish.countDown();
+              assertThat(result.get(10, SECONDS))
+                  .startsWith("processed 42 on ")
+                  .doesNotEndWith(Thread.currentThread().getName());
+              assertLockReleasedEventually();
+            });
   }
 
   @Test

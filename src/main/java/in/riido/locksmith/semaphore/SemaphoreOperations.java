@@ -12,8 +12,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.redisson.api.RFuture;
 import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
@@ -45,6 +47,14 @@ public class SemaphoreOperations {
   private static final Logger LOG = LoggerFactory.getLogger(SemaphoreOperations.class);
 
   private static final String KEY_NAMESPACE = "semaphore:";
+
+  /**
+   * How long past its wait time a waiting acquire may run before it is given up. Redisson's async
+   * wait can stay unanswered for ever. Thirty seconds is longer than Redisson takes, with its
+   * default timeouts, to fail a call when Redis does not answer, so such a failure still arrives as
+   * its exception.
+   */
+  private static final long WAIT_OVERRUN_MILLIS = 30_000;
 
   private final @NonNull RedissonClient redisson;
   private final @NonNull LocksmithProperties properties;
@@ -195,7 +205,8 @@ public class SemaphoreOperations {
      * set or the permit is waited for, its interrupt flag is kept, the handle is unacquired, and no
      * permit is left taken in Redis. Only an acquire that completed before the interrupt could stop
      * it returns an acquired handle, with the flag set. An interrupt already set when this is
-     * called sends nothing to Redis.
+     * called sends nothing to Redis. A wait that Redisson has not ended 30 seconds after the wait
+     * time ran out is given up with a WARN, and the handle is unacquired.
      *
      * <p>Semaphores are not reentrant: a nested acquire of the same key on the same thread takes
      * another permit.
@@ -229,7 +240,7 @@ public class SemaphoreOperations {
       try {
         ensurePermits(semaphore, fullKey, permits);
         long waitMillis = waitTime.toMillis();
-        permitId = tryAcquire(semaphore, waitMillis);
+        permitId = tryAcquire(semaphore, fullKey, waitMillis);
         // A semaphore always has at least one permit, so a count of 0 means Redis lost its state:
         // the count key, or the set of held permits. setPermits restores the count either way.
         if (permitId == null && RedissonFutures.await(redisson, semaphore.getPermitsAsync()) == 0) {
@@ -238,7 +249,7 @@ public class SemaphoreOperations {
               "Semaphore [{}] had no permits in Redis; count set to {} again", fullKey, permits);
           long elapsedMillis = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
           long leftMillis = Math.max(0L, waitMillis - elapsedMillis);
-          permitId = tryAcquire(semaphore, leftMillis);
+          permitId = tryAcquire(semaphore, fullKey, leftMillis);
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -267,15 +278,35 @@ public class SemaphoreOperations {
      * Redisson release a permit the attempt still wins; the single-permit variant returns a derived
      * future that a cancel does not reach.
      *
-     * @return the permit id, or null if none was acquired within {@code waitMillis}
+     * <p>A waiting attempt that has not ended {@link #WAIT_OVERRUN_MILLIS} after {@code waitMillis}
+     * is cancelled the same way, logged as a WARN and not acquired. An attempt that does not wait
+     * is one Redis call, which Redisson's own timeouts end, so it has no such deadline.
+     *
+     * @return the permit id, or null if none was acquired within {@code waitMillis}, or the wait
+     *     was given up
      * @throws InterruptedException if the thread is interrupted, including before the call
      */
     private @Nullable String tryAcquire(
-        @NonNull RPermitExpirableSemaphore semaphore, long waitMillis) throws InterruptedException {
-      List<String> ids =
-          RedissonFutures.await(
-              redisson,
-              semaphore.tryAcquireAsync(1, waitMillis, leaseTime.toMillis(), MILLISECONDS));
+        @NonNull RPermitExpirableSemaphore semaphore, @NonNull String fullKey, long waitMillis)
+        throws InterruptedException {
+      RFuture<List<String>> attempt =
+          semaphore.tryAcquireAsync(1, waitMillis, leaseTime.toMillis(), MILLISECONDS);
+      List<String> ids;
+      if (waitMillis == 0) {
+        ids = RedissonFutures.await(redisson, attempt);
+      } else {
+        try {
+          ids = RedissonFutures.await(redisson, attempt, waitMillis + WAIT_OVERRUN_MILLIS);
+        } catch (TimeoutException e) {
+          LOG.warn(
+              "Permit [{}] wait did not end within {}ms after its wait time of {}ms; Locksmith"
+                  + " stopped waiting and treats it as not acquired",
+              fullKey,
+              WAIT_OVERRUN_MILLIS,
+              waitMillis);
+          return null;
+        }
+      }
       return ids.isEmpty() ? null : ids.get(0);
     }
 

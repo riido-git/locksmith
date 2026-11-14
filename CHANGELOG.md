@@ -2,24 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [4.0.1] - 2026-11-14
 
 ### Added
-- One ERROR line on each call of an annotated method that returns work still pending, which then
-  runs after the lock or permit is released: a value startup cannot see because the method declares
-  a wider type, such as a `Callable` or an `SseEmitter` returned as `Object`, an `SseEmitter` or a
-  `Mono` inside a `ResponseEntity<?>`, or a future that has not completed, also one an `@Async`
-  method returns. The line names the method, the returned type and the key, and links to the wiki
-  page on rejected return types. The call still returns the value.
+- One ERROR line on each call of an annotated method that returns deferred work still pending, or
+  whose completion cannot be checked, which may run after the lock or permit is released: a value
+  startup cannot see because the method declares a wider type, such as a `Callable` or an
+  `SseEmitter` returned as `Object`, an `SseEmitter` or a
+  `Mono` inside a `ResponseEntity<?>`, a future or a Kotlin `Job` that has not completed, also a
+  future an `@Async` method returns, and a functional endpoint's `ServerResponse.sse` or `stream`
+  response, its `ServerResponse.async` response whose completion cannot be checked, or its response
+  with a body that is a reactive type or a future that has not completed. The line names
+  the method, the returned type and the key, and links to the wiki page on rejected return types.
+  The call still returns the value.
 
 ### Fixed
+- A lock without `leaseTime` could lose its renewal, expire after Redisson's watchdog timeout while
+  still held, and be taken by another instance. It happened when one thread released a key and took
+  the same key again right away, through a defect in Redisson 4.x's lock renewal. Locksmith now
+  gives every acquisition its own owner in Redisson instead of the thread id, which that defect
+  cannot reach. A nested acquire of the same key on the same thread is still reentrant.
+- A semaphore acquire with a `waitTime` could wait for ever under contention, when Redisson's async
+  wait never finished. A waiting acquire now stops 30 seconds after its wait time has run out, logs
+  a WARN and is not acquired, so the failure policy applies.
+- Locksmith stayed inactive, and logged that there is no `RedissonClient` bean, when the bean came
+  from an auto-configuration other than Redisson's starter whose class name sorts after Locksmith's,
+  such as one in an `io.`, `net.` or `org.` package. Annotated methods then ran without
+  coordination. Locksmith's auto-configuration now runs after the others.
+- A lock acquire whose `waitTime` ran out while Redisson was still subscribing to the lock's channel
+  threw Redisson's `RedisTimeoutException` (`Unable to acquire subscription lock`), which happens
+  with wait times of a few milliseconds. It is now not acquired, and the failure policy applies.
+- Startup fails for a key template that uses `#root`, also when a parameter is named `root`, and for
+  `#this` outside a selection or projection. In 4.0.0 such a template started, and every call
+  failed.
+- A locked call that waits is no longer refused on an application thread whose name starts with
+  `redisson` but is not Redisson's, such as `redissonTaskExecutor-1`. Redisson's own threads are
+  recognised by the prefix `redisson-`.
+- Class-level `@Async` is recognised on the bean's subclass, superclass and interfaces when an
+  annotated method is inherited. A valid inherited `Future` method no longer fails startup, and
+  unsupported return types still fail before the first call.
 - Startup fails for an annotated method whose return type Spring MVC runs after the method returns:
   `Callable`, `WebAsyncTask`, `DeferredResult`, `StreamingResponseBody`, `ResponseBodyEmitter` and
-  its subclasses such as `SseEmitter`, a `ResponseEntity` of a `StreamingResponseBody`, an emitter,
-  a `CompletionStage` or a reactive type, and any reactive type Spring's `ReactiveAdapterRegistry`
-  adapts, such as RxJava's `Single`. Kotlin's `Flow` and `Deferred` fail startup too, with or
-  without `kotlinx-coroutines-reactor`. In 4.0.0 such a method started, and its work ran after the
-  lock or permit was released.
+  its subclasses such as `SseEmitter`, a functional endpoint's `AsyncServerResponse`, or its
+  `EntityResponse` of a `CompletionStage` or a reactive type, a
+  `ResponseEntity`, or a subclass of it, of a `StreamingResponseBody`, an emitter, a
+  `CompletionStage` or a reactive type, and any reactive type Spring's `ReactiveAdapterRegistry`
+  adapts, such as RxJava's `Single`. Kotlin's `Flow`, `Deferred` and `Job` fail startup too, with or
+  without `kotlinx-coroutines-reactor`. The return type is read as Spring MVC reads it, with the
+  type variables the bean's class binds, so the `ResponseEntity<T>` or `T` of a generic base class
+  is judged by the type the subclass gives `T`. In 4.0.0 such a method started, and its work ran
+  after the lock or permit was released.
+- Startup fails for a bean that is itself a JDK proxy, such as a Feign client, when it inherits one
+  method from two interfaces that put different Locksmith annotations on it. In 4.0.0 such a bean
+  started, and only the annotations of one of the two declarations applied.
+- A failure handler that Spring advises, such as one with `@Transactional`, now works under
+  interface-based proxying (`spring.aop.proxy-target-class=false`), where Spring exposes it as a JDK
+  proxy. In 4.0.0, depending on which bean Spring created first, startup failed with `found 0`, or
+  each failed acquire threw `BeanNotOfRequiredTypeException` instead of calling the handler.
+- Startup no longer fails with `found 0` for a failure handler declared by its interface from a
+  `@Bean` method, such as `@Bean LockFailureHandler audit()`, or with `found 2` for one behind a
+  scoped proxy: handlers are counted once every singleton is created, and the hidden target bean of
+  a scoped proxy is not counted. A lazy or prototype handler must declare its concrete class as the
+  `@Bean` return type, so startup can identify it without creating it; a missing-handler error
+  explains this requirement.
 
 ## [4.0.0] - 2026-10-11
 

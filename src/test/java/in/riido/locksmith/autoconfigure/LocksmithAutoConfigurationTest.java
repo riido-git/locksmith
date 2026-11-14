@@ -12,6 +12,7 @@ import in.riido.locksmith.LocksmithConfigurationException;
 import in.riido.locksmith.aop.LocksmithAdvisor;
 import in.riido.locksmith.aop.LocksmithInterceptor;
 import in.riido.locksmith.aop.MethodSpecFactory;
+import in.riido.locksmith.autoconfigure.zlate.LateRedissonClientAutoConfiguration;
 import in.riido.locksmith.lock.LockOperations;
 import in.riido.locksmith.metrics.LocksmithMetrics;
 import in.riido.locksmith.metrics.MicrometerLocksmithMetrics;
@@ -208,6 +209,24 @@ class LocksmithAutoConfigurationTest {
                   "Locksmith is inactive: there is no RedissonClient bean, so annotated methods"
                       + " run without any coordination");
         });
+  }
+
+  @Test
+  @DisplayName(
+      "registers Locksmith, with no inactive WARN, when a RedissonClient bean comes from an"
+          + " auto-configuration whose class name sorts after Locksmith's")
+  void redissonClientFromLaterAutoConfiguration() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                LocksmithAutoConfiguration.class,
+                LocksmithInactiveAutoConfiguration.class,
+                LateRedissonClientAutoConfiguration.class))
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(LockOperations.class);
+              assertThat(events(LocksmithInactiveAutoConfiguration.class, Level.WARN)).isEmpty();
+            });
   }
 
   @ParameterizedTest(name = "locksmith.enabled={0}")

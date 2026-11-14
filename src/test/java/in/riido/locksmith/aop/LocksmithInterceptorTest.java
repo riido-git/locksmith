@@ -7,12 +7,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Level;
@@ -43,6 +45,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.FutureTask;
+import kotlinx.coroutines.CompletableDeferred;
+import kotlinx.coroutines.CompletableDeferredKt;
+import kotlinx.coroutines.CompletableJob;
+import kotlinx.coroutines.Job;
+import kotlinx.coroutines.JobKt;
 import kotlinx.coroutines.flow.FlowKt;
 import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.AfterEach;
@@ -56,13 +63,15 @@ import org.redisson.api.RPermitExpirableSemaphore;
 import org.redisson.api.RedissonClient;
 import org.redisson.misc.CompletableFutureWrapper;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.context.request.async.WebAsyncTask;
+import org.springframework.web.servlet.function.ServerResponse;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import reactor.core.publisher.Mono;
@@ -82,7 +91,7 @@ class LocksmithInterceptorTest {
   private RedissonClient redisson;
   private RLock lock;
   private RPermitExpirableSemaphore semaphore;
-  private BeanFactory beanFactory;
+  private ListableBeanFactory beanFactory;
   private MethodSpecFactory factory;
   private LocksmithInterceptor interceptor;
 
@@ -209,6 +218,25 @@ class LocksmithInterceptorTest {
     public Object bothUntyped(String id) {
       return null;
     }
+
+    public Object plain(String id) {
+      return null;
+    }
+  }
+
+  /** An adopter's own response type: not public, and it overrides getBody. */
+  static class OwnEntity extends ResponseEntity<Object> {
+    private final Object body;
+
+    OwnEntity(Object body) {
+      super(HttpStatus.OK);
+      this.body = body;
+    }
+
+    @Override
+    public Object getBody() {
+      return body;
+    }
   }
 
   @BeforeEach
@@ -226,7 +254,7 @@ class LocksmithInterceptorTest {
         new LockOperations(redisson, properties, new NoOpLocksmithMetrics());
     SemaphoreOperations semaphores =
         new SemaphoreOperations(redisson, properties, new NoOpLocksmithMetrics());
-    beanFactory = mock(BeanFactory.class);
+    beanFactory = mock(ListableBeanFactory.class);
     factory =
         spy(
             new MethodSpecFactory(
@@ -234,6 +262,18 @@ class LocksmithInterceptorTest {
     interceptor =
         new LocksmithInterceptor(
             provider(operations), provider(semaphores), provider(factory), beanFactory);
+  }
+
+  /**
+   * Two beans of the handler interface: one named "other" of another class, which the lookup must
+   * not fetch, then "handler", the handler bean.
+   */
+  private <T> void handlerBeans(Class<T> handlerInterface, T handler) {
+    when(beanFactory.getBeanNamesForType(handlerInterface))
+        .thenReturn(new String[] {"other", "handler"});
+    doReturn(Object.class).when(beanFactory).getType("other");
+    doReturn(handler.getClass()).when(beanFactory).getType("handler");
+    when(beanFactory.getBean("handler", handlerInterface)).thenReturn(handler);
   }
 
   @SuppressWarnings("unchecked")
@@ -280,7 +320,7 @@ class LocksmithInterceptorTest {
       assertThat(interceptor.invoke(invocation)).isEqualTo("ran");
 
       verify(invocation).proceed();
-      verify(lock).unlockAsync(Thread.currentThread().getId());
+      verify(lock).unlockAsync(anyLong());
     }
 
     @Test
@@ -313,7 +353,7 @@ class LocksmithInterceptorTest {
 
       assertThatThrownBy(() -> interceptor.invoke(invocation)).isSameAs(failure);
 
-      verify(lock).unlockAsync(Thread.currentThread().getId());
+      verify(lock).unlockAsync(anyLong());
     }
   }
 
@@ -363,13 +403,14 @@ class LocksmithInterceptorTest {
     void handlerPolicy() throws Throwable {
       lockAcquired(false);
       RecordingHandler handler = new RecordingHandler();
-      when(beanFactory.getBean(RecordingHandler.class)).thenReturn(handler);
+      handlerBeans(LockFailureHandler.class, handler);
       MethodInvocation invocation = invocation("handled");
 
       assertThat(interceptor.invoke(invocation)).isEqualTo("handled");
       assertThat(interceptor.invoke(invocation)).isEqualTo("handled");
 
-      verify(beanFactory, times(2)).getBean(RecordingHandler.class);
+      verify(beanFactory, times(2)).getBean("handler", LockFailureHandler.class);
+      verify(beanFactory, never()).getBean(eq("other"), any(Class.class));
       verify(invocation, never()).proceed();
       LockFailureContext context = handler.contexts.get(0);
       assertThat(context.key()).isEqualTo(FULL_KEY);
@@ -391,7 +432,7 @@ class LocksmithInterceptorTest {
       interceptor.invoke(invocation("throwing"));
       interceptor.invoke(invocation("throwing"));
 
-      verify(factory, times(1)).create(method("throwing"));
+      verify(factory, times(1)).create(method("throwing"), Service.class);
     }
   }
 
@@ -557,13 +598,14 @@ class LocksmithInterceptorTest {
     void handlerPolicy() throws Throwable {
       permitAcquired(false);
       RecordingSemaphoreHandler handler = new RecordingSemaphoreHandler();
-      when(beanFactory.getBean(RecordingSemaphoreHandler.class)).thenReturn(handler);
+      handlerBeans(SemaphoreFailureHandler.class, handler);
       MethodInvocation invocation = invocation("permitHandled");
 
       assertThat(interceptor.invoke(invocation)).isEqualTo("handled");
       assertThat(interceptor.invoke(invocation)).isEqualTo("handled");
 
-      verify(beanFactory, times(2)).getBean(RecordingSemaphoreHandler.class);
+      verify(beanFactory, times(2)).getBean("handler", SemaphoreFailureHandler.class);
+      verify(beanFactory, never()).getBean(eq("other"), any(Class.class));
       verify(invocation, never()).proceed();
       SemaphoreFailureContext context = handler.contexts.get(0);
       assertThat(context.key()).isEqualTo(SEMAPHORE_KEY);
@@ -646,10 +688,10 @@ class LocksmithInterceptorTest {
           + name
           + " returned "
           + type
-          + ", whose work runs after Locksmith releases "
+          + ", whose work may run after Locksmith releases "
           + releases
-          + ", so that work runs without coordination; put the annotation on the method that does"
-          + " the work. See https://github.com/riido-git/locksmith/wiki/Limitations"
+          + ", without coordination; put the annotation on the method that does the work. See"
+          + " https://github.com/riido-git/locksmith/wiki/Limitations"
           + "#return-types-that-are-rejected";
     }
 
@@ -665,7 +707,7 @@ class LocksmithInterceptorTest {
 
       assertThat(errors())
           .containsExactly(error("@DistributedLock", "untyped", Callable.class.getName(), LOCK));
-      verify(lock).unlockAsync(Thread.currentThread().getId());
+      verify(lock).unlockAsync(anyLong());
     }
 
     @Test
@@ -766,6 +808,157 @@ class LocksmithInterceptorTest {
       assertThat(errors())
           .containsExactly(
               error("@DistributedLock", "asyncFuture", CompletableFuture.class.getName(), LOCK));
+    }
+
+    @Test
+    @DisplayName(
+        "reads the body of a ResponseEntity subclass that is not public and overrides getBody,"
+            + " and still returns the value")
+    void readsOwnEntityBody() throws Throwable {
+      lockAcquired(true);
+      OwnEntity pending = new OwnEntity(new SseEmitter());
+      OwnEntity plain = new OwnEntity("x");
+
+      assertThat(call("entity", pending)).isSameAs(pending);
+      assertThat(call("entity", plain)).isSameAs(plain);
+
+      assertThat(errors())
+          .containsExactly(
+              error(
+                  "@DistributedLock",
+                  "entity",
+                  OwnEntity.class.getName() + " of " + SseEmitter.class.getName(),
+                  LOCK));
+    }
+
+    @Test
+    @DisplayName("logs a Kotlin Job or Deferred until it completes, as an unfinished future")
+    void logsUnfinishedKotlinJobs() throws Throwable {
+      lockAcquired(true);
+      CompletableJob running = JobKt.Job((Job) null);
+      CompletableDeferred<String> deferred = CompletableDeferredKt.CompletableDeferred((Job) null);
+      CompletableJob finished = JobKt.Job((Job) null);
+      finished.complete();
+      CompletableDeferred<String> done = CompletableDeferredKt.CompletableDeferred((Job) null);
+      done.complete("x");
+
+      call("untyped", running);
+      call("untyped", deferred);
+      call("untyped", finished);
+      call("untyped", done);
+
+      assertThat(errors())
+          .containsExactly(
+              error("@DistributedLock", "untyped", running.getClass().getName(), LOCK),
+              error("@DistributedLock", "untyped", deferred.getClass().getName(), LOCK));
+    }
+
+    @Test
+    @DisplayName(
+        "logs a functional endpoint's async, SSE and streaming responses, and not a plain one")
+    void logsFunctionalAsyncResponses() throws Throwable {
+      lockAcquired(true);
+      ServerResponse async = ServerResponse.async(new CompletableFuture<ServerResponse>());
+      ServerResponse sse = ServerResponse.sse(builder -> {});
+      ServerResponse stream = ServerResponse.ok().stream(builder -> {});
+
+      call("untyped", async);
+      call("untyped", sse);
+      call("untyped", stream);
+      call("untyped", ServerResponse.ok().build());
+
+      assertThat(errors())
+          .containsExactly(
+              error("@DistributedLock", "untyped", async.getClass().getName(), LOCK),
+              error("@DistributedLock", "untyped", sse.getClass().getName(), LOCK),
+              error("@DistributedLock", "untyped", stream.getClass().getName(), LOCK));
+    }
+
+    @Test
+    @DisplayName(
+        "logs a functional response whose body is a reactive type or an unfinished future, naming"
+            + " the body's type, and not one whose body is finished or plain")
+    void logsFunctionalEntityResponses() throws Throwable {
+      lockAcquired(true);
+      Mono<String> mono = Mono.just("x");
+      ServerResponse ofMono = ServerResponse.ok().body(mono);
+      ServerResponse ofFuture = ServerResponse.ok().body(new CompletableFuture<String>());
+
+      call("untyped", ofMono);
+      call("untyped", ofFuture);
+      call("untyped", ServerResponse.ok().body(CompletableFuture.completedFuture("x")));
+      call("untyped", ServerResponse.ok().body("plain"));
+
+      assertThat(errors())
+          .containsExactly(
+              error(
+                  "@DistributedLock",
+                  "untyped",
+                  ofMono.getClass().getName() + " of " + mono.getClass().getName(),
+                  LOCK),
+              error(
+                  "@DistributedLock",
+                  "untyped",
+                  ofFuture.getClass().getName() + " of " + CompletableFuture.class.getName(),
+                  LOCK));
+    }
+
+    @Test
+    @DisplayName("does not claim an async HTTP response is still pending when it cannot check")
+    void completedAsyncResponseUsesCautiousDiagnostic() throws Throwable {
+      lockAcquired(true);
+      CompletableFuture<ServerResponse> completion = new CompletableFuture<>();
+      ServerResponse response = ServerResponse.async(completion);
+      completion.complete(ServerResponse.ok().build());
+
+      assertThat(call("untyped", response)).isSameAs(response);
+
+      assertThat(errors()).singleElement().asString().contains("whose work may run after");
+    }
+
+    @Test
+    @DisplayName(
+        "judges a functional async response whose future was already done by the response it"
+            + " holds")
+    void judgesCompletedAsyncResponseByItsResponse() throws Throwable {
+      lockAcquired(true);
+      ServerResponse sseInside =
+          ServerResponse.async(
+              CompletableFuture.completedFuture(ServerResponse.sse(builder -> {})));
+
+      call(
+          "untyped",
+          ServerResponse.async(CompletableFuture.completedFuture(ServerResponse.ok().build())));
+      call("untyped", ServerResponse.async(Mono.just(ServerResponse.ok().build())));
+      call("untyped", sseInside);
+
+      assertThat(errors())
+          .containsExactly(
+              error("@DistributedLock", "untyped", sseInside.getClass().getName(), LOCK));
+    }
+
+    @Test
+    @DisplayName("answers a second value of a class as the first, for a plain and a pending class")
+    void answersEachClassAlike() {
+      assertThat(MethodSpecFactory.pendingWork("plain")).isNull();
+      assertThat(MethodSpecFactory.pendingWork("again")).isNull();
+      assertThat(MethodSpecFactory.pendingWork(new CompletableFuture<String>()))
+          .isEqualTo(CompletableFuture.class.getName());
+      assertThat(MethodSpecFactory.pendingWork(new CompletableFuture<String>()))
+          .isEqualTo(CompletableFuture.class.getName());
+    }
+
+    @Test
+    @DisplayName(
+        "runs a method with neither annotation as it is, as an interceptor applied by hand can"
+            + " meet")
+    void runsUnannotatedMethodAsItIs() throws Throwable {
+      CompletableFuture<String> pending = new CompletableFuture<>();
+
+      assertThat(call("plain", pending)).isSameAs(pending);
+
+      assertThat(errors()).isEmpty();
+      verifyNoInteractions(redisson);
     }
 
     @Test

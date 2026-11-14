@@ -24,7 +24,7 @@ Each primitive has two entry points that share one implementation:
 - Java 17 or later.
 - Spring Boot 4.1.x.
 - Redisson 4.x, supplied by you as a `RedissonClient` bean, for example through
-  `redisson-spring-boot-starter`. Locksmith 4.0.0 is built and tested against Redisson 4.8.0.
+  `redisson-spring-boot-starter`. Locksmith 4.0.1 is built and tested against Redisson 4.8.0.
 - A Redis server.
 
 Locksmith declares Spring and Redisson as `provided` dependencies. It does not bring them onto your
@@ -38,7 +38,7 @@ Maven:
 <dependency>
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>4.0.0</version>
+    <version>4.0.1</version>
 </dependency>
 
 <!-- Supplies the RedissonClient bean. Any other way of defining that bean works too. -->
@@ -52,7 +52,7 @@ Maven:
 Gradle:
 
 ```groovy
-implementation 'in.riido:locksmith-spring-boot-starter:4.0.0'
+implementation 'in.riido:locksmith-spring-boot-starter:4.0.1'
 implementation 'org.redisson:redisson-spring-boot-starter:4.8.0'
 ```
 

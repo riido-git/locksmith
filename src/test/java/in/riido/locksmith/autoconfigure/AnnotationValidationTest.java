@@ -28,9 +28,12 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import reactor.core.publisher.Mono;
 
 /** Startup validation: a misconfigured annotation fails the context refresh. */
@@ -181,6 +184,36 @@ class AnnotationValidationTest {
     }
   }
 
+  @Async
+  static class AsyncInheritedFuture extends PlainFuture {}
+
+  static class AsyncGrandchildFuture extends AsyncInheritedFuture {}
+
+  @Async
+  interface AsyncType {}
+
+  static class AsyncInterfaceInheritedFuture extends PlainFuture implements AsyncType {}
+
+  static class PlainSemaphoreFuture {
+    @DistributedSemaphore(key = "k", permits = "1")
+    public Future<String> run() {
+      return null;
+    }
+  }
+
+  @Async
+  static class AsyncInheritedSemaphoreFuture extends PlainSemaphoreFuture {}
+
+  static class PlainString {
+    @DistributedLock(key = "k")
+    public String run() {
+      return "ran";
+    }
+  }
+
+  @Async
+  static class AsyncInheritedString extends PlainString {}
+
   static class ReactiveReturn {
     @DistributedLock(key = "k")
     public Mono<String> run() {
@@ -194,6 +227,58 @@ class AnnotationValidationTest {
     @DistributedLock(key = "report")
     public Callable<String> run() {
       return () -> "report";
+    }
+  }
+
+  /** A generic base class, as a base controller is; each subclass binds {@code T}. */
+  abstract static class EventsBase<T> {
+    @DistributedLock(key = "events")
+    public ResponseEntity<T> run() {
+      return null;
+    }
+  }
+
+  static class SseEvents extends EventsBase<SseEmitter> {}
+
+  static class StreamingEvents extends EventsBase<StreamingResponseBody> {}
+
+  static class StringEvents extends EventsBase<String> {}
+
+  interface LockedApi {
+    @DistributedLock(key = "split")
+    String fetch(String id);
+  }
+
+  interface LimitedApi {
+    @DistributedSemaphore(key = "split", permits = "2")
+    String fetch(String id);
+  }
+
+  /** A client interface that inherits fetch from two interfaces, as a Feign client can. */
+  interface SplitApi extends LockedApi, LimitedApi {}
+
+  interface SplitApiReversed extends LimitedApi, LockedApi {}
+
+  /** The same, with fetch declared again carrying both annotations. */
+  interface JoinedApi extends LockedApi, LimitedApi {
+    @Override
+    @DistributedLock(key = "split")
+    @DistributedSemaphore(key = "split", permits = "2")
+    String fetch(String id);
+  }
+
+  interface LockedApiCopy {
+    @DistributedLock(key = "split")
+    String fetch(String id);
+  }
+
+  /** Inherits fetch from two interfaces that annotate it the same way. */
+  interface SameApi extends LockedApi, LockedApiCopy {}
+
+  static class SplitApiImpl implements SplitApi {
+    @Override
+    public String fetch(String id) {
+      return id;
     }
   }
 
@@ -552,7 +637,65 @@ class AnnotationValidationTest {
                               + ".run: return type java.util.concurrent.Callable<java.lang.String>"
                               + " runs its work after the lock is released, which happens when"
                               + " the method returns; put the annotation on the method that does"
-                              + " the work, such as a service method called inside the Callable"));
+                              + " the work"));
+    }
+
+    @Test
+    @DisplayName(
+        "on a ResponseEntity<T> of a generic base class whose subclass binds T to an emitter")
+    void genericBaseBoundToEmitter() {
+      runner
+          .withBean(SseEvents.class)
+          .run(
+              context ->
+                  assertThat(failure(context))
+                      .hasMessage(
+                          "@DistributedLock on "
+                              + EventsBase.class.getName()
+                              + ".run: return type "
+                              + ResponseEntity.class.getName()
+                              + "<"
+                              + SseEmitter.class.getName()
+                              + "> runs its work after the lock is released, which happens when"
+                              + " the method returns; put the annotation on the method that does"
+                              + " the work"));
+    }
+
+    @Test
+    @DisplayName(
+        "on two subclasses that bind one generic base method differently, at the streaming one")
+    void genericBaseBoundDifferently() {
+      runner
+          .withBean(StringEvents.class)
+          .withBean(StreamingEvents.class)
+          .run(
+              context ->
+                  assertThat(failure(context))
+                      .hasMessageContaining(EventsBase.class.getName() + ".run")
+                      .hasMessageContaining(
+                          ResponseEntity.class.getName()
+                              + "<"
+                              + StreamingResponseBody.class.getName()
+                              + ">"));
+    }
+
+    @Test
+    @DisplayName(
+        "on a JDK proxy bean that inherits one method from two interfaces that each annotate it,"
+            + " in either order, naming both declarations")
+    void splitAnnotationsOnJdkProxyBean() {
+      String[] fragments = {
+        LockedApi.class.getName() + ".fetch (@DistributedLock)",
+        LimitedApi.class.getName() + ".fetch (@DistributedSemaphore)",
+        "a JDK proxy bean inherits fetch from each of these interfaces",
+        "put all the annotations on one declaration"
+      };
+      runner
+          .withBean(SplitApi.class, () -> jdkProxy(SplitApi.class, id -> id))
+          .run(context -> assertThat(failure(context)).hasMessageContainingAll(fragments));
+      runner
+          .withBean(SplitApiReversed.class, () -> jdkProxy(SplitApiReversed.class, id -> id))
+          .run(context -> assertThat(failure(context)).hasMessageContainingAll(fragments));
     }
 
     @Test
@@ -736,9 +879,85 @@ class AnnotationValidationTest {
   }
 
   @Test
+  @DisplayName(
+      "starts with a JDK proxy bean whose interface declares the inherited method again with both"
+          + " annotations")
+  void startsWithJoinedAnnotationsOnJdkProxyBean() {
+    runner
+        .withBean(JoinedApi.class, () -> jdkProxy(JoinedApi.class, id -> id))
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName(
+      "starts with a JDK proxy bean that inherits one method from two interfaces that annotate it"
+          + " the same way, since either declaration gives the same spec")
+  void startsWithSameAnnotationsOnJdkProxyBean() {
+    runner
+        .withBean(SameApi.class, () -> jdkProxy(SameApi.class, id -> id))
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName(
+      "starts with a JDK proxy bean that lists the joined interface and one of its parents, whose"
+          + " declaration the joined one overrides")
+  void startsWithJdkProxyListingAParentToo() {
+    runner
+        .withBean(
+            JoinedApi.class,
+            () ->
+                (JoinedApi)
+                    Proxy.newProxyInstance(
+                        JoinedApi.class.getClassLoader(),
+                        new Class<?>[] {JoinedApi.class, LockedApi.class},
+                        (proxy, method, args) -> args[0]))
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName(
+      "starts with a class bean that inherits one method from two interfaces that each annotate"
+          + " it, since a class bean reads both")
+  void startsWithSplitAnnotationsOnClassBean() {
+    runner.withBean(SplitApiImpl.class).run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName("starts with a generic base class whose subclass binds its type to a plain value")
+  void startsWithGenericBaseBoundToPlainValue() {
+    runner.withBean(StringEvents.class).run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
   @DisplayName("starts with a plain Future return type when the class is @Async")
   void startsWithAsyncClassFuture() {
     runner.withBean(AsyncClassFuture.class).run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName("starts with inherited Future methods when the bean class is @Async")
+  void startsWithAsyncInheritedFuture() {
+    runner.withBean(AsyncInheritedFuture.class).run(context -> assertThat(context).hasNotFailed());
+    runner.withBean(AsyncGrandchildFuture.class).run(context -> assertThat(context).hasNotFailed());
+    runner
+        .withBean(AsyncInterfaceInheritedFuture.class)
+        .run(context -> assertThat(context).hasNotFailed());
+    runner
+        .withBean(AsyncInheritedSemaphoreFuture.class)
+        .run(context -> assertThat(context).hasNotFailed());
+  }
+
+  @Test
+  @DisplayName("rejects an inherited plain return type when the bean class is @Async")
+  void rejectsAsyncInheritedString() {
+    runner
+        .withBean(AsyncInheritedString.class)
+        .run(
+            context ->
+                assertThat(failure(context))
+                    .hasMessageContaining(PlainString.class.getName() + ".run")
+                    .hasMessageContaining("@Async methods can return only"));
   }
 
   @Test

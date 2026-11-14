@@ -5,7 +5,11 @@ on:
     types: [published]
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
   publish:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -13,6 +17,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Check release tag matches POM version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from xml.etree import ElementTree
+
+          version = ElementTree.parse("pom.xml").getroot().findtext("{http://maven.apache.org/POM/4.0.0}version")
+          tag = os.environ["RELEASE_TAG"]
+          if tag != f"v{version}":
+              raise SystemExit(f"Release tag {tag!r} does not match POM version {version!r}")
+          PYTHON
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -24,9 +42,8 @@ jobs:
           server-username-env-var: CENTRAL_USERNAME
           server-password-env-var: CENTRAL_TOKEN
 
-      # Maven 3.10 leaves maven-metadata-local.xml and _remote.repositories
-      # in the bundle that central-publishing-maven-plugin 0.11.0 uploads, and
-      # Central rejects it. Use 3.9 until a plugin release handles Maven 3.10.
+      # Maven 3.10 put local repository metadata into the bundle of publishing plugin 0.11.0, and Central
+      # rejected it. Plugin 0.12.0 has not published from Maven 3.10 yet, so releases stay on 3.9.16.
       - name: Set up Maven 3.9.16
         run: |
           curl -fsSLo maven.tar.gz https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.tar.gz
@@ -34,8 +51,10 @@ jobs:
           tar -xzf maven.tar.gz -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/apache-maven-3.9.16/bin" >> "$GITHUB_PATH"
 
+      # The validate job has run the whole suite on this commit. The tests are not run again here,
+      # where the signing key and the Central token are in the environment.
       - name: Publish to Maven Central
-        run: mvn -B -V deploy -Prelease -Dgpg.signer=bc -DautoPublish=true -DwaitUntil=PUBLISHED --file pom.xml
+        run: mvn -B -V deploy -Prelease -DskipTests -Dgpg.signer=bc -DautoPublish=true -DwaitUntil=PUBLISHED --file pom.xml
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}

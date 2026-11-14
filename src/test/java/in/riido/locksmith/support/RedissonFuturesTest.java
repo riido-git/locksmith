@@ -8,15 +8,20 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import in.riido.locksmith.LocksmithConfigurationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.redisson.RedissonShutdownException;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
+import org.redisson.misc.CompletableFutureWrapper;
 
 @DisplayName("RedissonFutures")
 class RedissonFuturesTest {
@@ -80,6 +85,19 @@ class RedissonFuturesTest {
               "Locksmith cannot wait for a lock or permit on Redisson thread [redisson-4-1]");
     }
 
+    @Test
+    @DisplayName(
+        "an application thread whose name starts with redisson but not redisson- is allowed, also"
+            + " for an acquire that waits")
+    void applicationThreadNamedRedisson() throws InterruptedException {
+      assertThat(guard("redissonTaskExecutor-1", true)).isEqualTo("allowed");
+      assertThat(guard("redisson-3-1", false)).isEqualTo("allowed");
+      assertThat((Throwable) guard("redisson-3-1", true))
+          .isExactlyInstanceOf(IllegalStateException.class)
+          .hasMessageStartingWith(
+              "Locksmith cannot wait for a lock or permit on Redisson thread [redisson-3-1]");
+    }
+
     @ParameterizedTest(name = "waits={0}")
     @ValueSource(booleans = {false, true})
     @DisplayName("any other thread is allowed")
@@ -100,6 +118,71 @@ class RedissonFuturesTest {
       assertThat(onThread("redisson-timer-3-1", check)).isEqualTo(true);
       assertThat(onThread("redisson-4-1", check)).isEqualTo(false);
       assertThat(onThread("main", check)).isEqualTo(false);
+    }
+  }
+
+  @Nested
+  @DisplayName("await with a timeout")
+  class AwaitWithTimeout {
+
+    private final RedissonClient redisson = mock(RedissonClient.class);
+
+    @AfterEach
+    void clearInterruptFlag() {
+      Thread.interrupted();
+    }
+
+    @Test
+    @DisplayName("a call that never completes is cancelled once the time has passed")
+    void neverCompletes() {
+      CompletableFuture<String> pending = new CompletableFuture<>();
+
+      assertThatThrownBy(
+              () -> RedissonFutures.await(redisson, new CompletableFutureWrapper<>(pending), 50))
+          .isExactlyInstanceOf(TimeoutException.class);
+      assertThat(pending).isCancelled();
+    }
+
+    @Test
+    @DisplayName("a call that completes just as the time is up returns its value")
+    void completesAsTimeIsUp() throws Exception {
+      CompletableFuture<String> pending = new CompletableFuture<>();
+      CompletableFutureWrapper<String> future =
+          new CompletableFutureWrapper<>(pending) {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+              pending.complete("won");
+              return super.cancel(mayInterruptIfRunning);
+            }
+          };
+
+      assertThat(RedissonFutures.await(redisson, future, 50)).isEqualTo("won");
+    }
+
+    @Test
+    @DisplayName("an interrupt cancels the call and is rethrown")
+    void interrupted() {
+      CompletableFuture<String> pending = new CompletableFuture<>();
+      Thread.currentThread().interrupt();
+
+      assertThatThrownBy(
+              () ->
+                  RedissonFutures.await(redisson, new CompletableFutureWrapper<>(pending), 60_000))
+          .isExactlyInstanceOf(InterruptedException.class);
+      assertThat(pending).isCancelled();
+    }
+
+    @Test
+    @DisplayName("a client that shuts down cancels the call with RedissonShutdownException")
+    void clientShutsDown() {
+      CompletableFuture<String> pending = new CompletableFuture<>();
+      when(redisson.isShuttingDown()).thenReturn(true);
+
+      assertThatThrownBy(
+              () ->
+                  RedissonFutures.await(redisson, new CompletableFutureWrapper<>(pending), 60_000))
+          .isExactlyInstanceOf(RedissonShutdownException.class);
+      assertThat(pending).isCancelled();
     }
   }
 

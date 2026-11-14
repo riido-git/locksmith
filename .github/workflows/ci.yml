@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [ main ]
   pull_request:
@@ -24,8 +25,25 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Require Docker for integration tests
+        run: docker info
+
       - name: Run tests
         run: mvn -B verify -Pslow --file pom.xml
+
+      - name: Reject skipped tests
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          reports = list(Path("target/surefire-reports").glob("TEST-*.xml"))
+          if not reports:
+              raise SystemExit("No test reports were produced")
+          skipped = [path.name for path in reports if int(ElementTree.parse(path).getroot().get("skipped", "0"))]
+          if skipped:
+              raise SystemExit(f"Tests were skipped: {', '.join(skipped)}")
+          PYTHON
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7

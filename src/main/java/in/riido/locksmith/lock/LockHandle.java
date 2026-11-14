@@ -18,11 +18,10 @@ import org.slf4j.LoggerFactory;
  * The result of one {@link LockOperations.Builder#acquire()}. Use it in try-with-resources and
  * check {@link #acquired()} before entering the critical section.
  *
- * <p>The lock is owned by the thread that acquired it, so a nested acquire of the same key on that
- * thread is reentrant. The handle releases as that owner, so it can be closed on any thread. Until
- * it is closed, though, the acquiring thread takes the same key again at once, even for unrelated
- * work: after handing the handle to another thread, do not acquire that key again on the acquiring
- * thread.
+ * <p>Until the handle is closed, a nested acquire of the same key on the thread that acquired it is
+ * reentrant: it is taken again at once, even for unrelated work and also after the handle was
+ * handed to another thread. So after handing the handle over, do not acquire that key again on the
+ * acquiring thread until it is closed. The handle can be closed on any thread.
  */
 public final class LockHandle implements AutoCloseable {
 
@@ -74,6 +73,16 @@ public final class LockHandle implements AutoCloseable {
    */
   public @NonNull String key() {
     return fullKey;
+  }
+
+  /** Returns the id the lock is owned by in Redisson. */
+  long ownerId() {
+    return ownerId;
+  }
+
+  /** Reports whether {@link #close()} was called on this acquired handle. */
+  boolean closed() {
+    return closed.get();
   }
 
   /**

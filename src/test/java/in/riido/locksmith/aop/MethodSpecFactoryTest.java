@@ -37,6 +37,7 @@ import java.util.concurrent.Future;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
 import kotlinx.coroutines.Deferred;
+import kotlinx.coroutines.Job;
 import kotlinx.coroutines.flow.StateFlow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,11 +46,15 @@ import org.reactivestreams.Publisher;
 import org.springframework.core.ReactiveAdapterRegistry;
 import org.springframework.expression.ParseException;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.context.request.async.WebAsyncTask;
+import org.springframework.web.servlet.function.AsyncServerResponse;
+import org.springframework.web.servlet.function.EntityResponse;
+import org.springframework.web.servlet.function.ServerResponse;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -574,6 +579,47 @@ class MethodSpecFactoryTest {
     public void writeTo(OutputStream outputStream) {}
   }
 
+  /** A {@code ResponseEntity} subclass that binds its body type. */
+  static class SseResponse extends ResponseEntity<SseEmitter> {
+    SseResponse() {
+      super(HttpStatus.OK);
+    }
+  }
+
+  /** A generic base class, as a base controller is; each subclass binds {@code T}. */
+  @SuppressWarnings("unused")
+  abstract static class GenericBase<T> {
+    @DistributedLock(key = "k")
+    ResponseEntity<T> entity() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    T value() {
+      return null;
+    }
+
+    @Async
+    @DistributedLock(key = "k")
+    T asyncValue() {
+      return null;
+    }
+  }
+
+  static class SseBase extends GenericBase<SseEmitter> {}
+
+  static class StreamingBase extends GenericBase<StreamingResponseBody> {}
+
+  static class CallableBase extends GenericBase<Callable<String>> {}
+
+  static class MonoBase extends GenericBase<Mono<String>> {}
+
+  static class FutureBase extends GenericBase<CompletableFuture<String>> {}
+
+  static class JobBase extends GenericBase<Job> {}
+
+  static class StringBase extends GenericBase<String> {}
+
   @SuppressWarnings("unused")
   static class ReturnTypes {
     @DistributedLock(key = "k")
@@ -874,6 +920,52 @@ class MethodSpecFactoryTest {
     ResponseEntity<Callable<String>> entityOfCallable() {
       return null;
     }
+
+    @DistributedLock(key = "k")
+    SseResponse sseResponse() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    Job kotlinJob() {
+      return null;
+    }
+
+    @DistributedSemaphore(key = "k", permits = "1")
+    Job semaphoreKotlinJob() {
+      return null;
+    }
+
+    @Async
+    @DistributedLock(key = "k")
+    Job asyncKotlinJob() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    AsyncServerResponse asyncServerResponse() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    ServerResponse serverResponse() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    EntityResponse<CompletableFuture<String>> entityResponseOfCompletableFuture() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    EntityResponse<Mono<String>> entityResponseOfMono() {
+      return null;
+    }
+
+    @DistributedLock(key = "k")
+    EntityResponse<String> entityResponseOfString() {
+      return null;
+    }
   }
 
   @Async
@@ -994,8 +1086,7 @@ class MethodSpecFactoryTest {
           + ": return type "
           + type
           + " runs its work after the lock is released, which happens when the method returns;"
-          + " put the annotation on the method that does the work, such as a service method"
-          + " called inside the Callable";
+          + " put the annotation on the method that does the work";
     }
 
     /** The name of a generic type with one type argument, as the message spells it. */
@@ -1232,14 +1323,118 @@ class MethodSpecFactoryTest {
 
     @Test
     @DisplayName(
-        "accepts a plain value, ResponseEntity<String>, HttpEntity<StreamingResponseBody> and"
-            + " ResponseEntity<Callable>, which Spring MVC does not run later")
+        "accepts a plain value, ResponseEntity<String>, HttpEntity<StreamingResponseBody>,"
+            + " ResponseEntity<Callable> and a functional ServerResponse, which Spring MVC does not"
+            + " run later")
     void acceptsWhatMvcDoesNotRunLater() {
       assertThat(factory.create(returnTypes("plainValue")).lock()).isNotNull();
       assertThat(factory.create(returnTypes("entityOfString")).lock()).isNotNull();
       assertThat(factory.create(returnTypes("httpEntityOfStreamingResponseBody")).lock())
           .isNotNull();
       assertThat(factory.create(returnTypes("entityOfCallable")).lock()).isNotNull();
+      assertThat(factory.create(returnTypes("serverResponse")).lock()).isNotNull();
+    }
+
+    @Test
+    @DisplayName(
+        "rejects a ResponseEntity subclass that binds an emitter body, and a functional"
+            + " AsyncServerResponse")
+    void rejectsEntitySubclassAndAsyncServerResponse() {
+      assertRejectedWith(
+          "sseResponse", runsAfterRelease(LOCK_PREFIX, "sseResponse", SseResponse.class.getName()));
+      assertRejectedWith(
+          "asyncServerResponse",
+          runsAfterRelease(
+              LOCK_PREFIX, "asyncServerResponse", AsyncServerResponse.class.getName()));
+    }
+
+    @Test
+    @DisplayName(
+        "rejects a functional EntityResponse of a CompletableFuture or a Mono, and accepts one of a"
+            + " String")
+    void judgesEntityResponseByItsEntity() {
+      assertRejectedWith(
+          "entityResponseOfCompletableFuture",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityResponseOfCompletableFuture",
+              generic(EntityResponse.class, generic(CompletableFuture.class, STRING))));
+      assertRejectedWith(
+          "entityResponseOfMono",
+          runsAfterRelease(
+              LOCK_PREFIX,
+              "entityResponseOfMono",
+              generic(EntityResponse.class, generic(Mono.class, STRING))));
+      assertThat(factory.create(returnTypes("entityResponseOfString")).lock()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("rejects a Kotlin Job without @Async for both annotations, and on @Async")
+    void rejectsKotlinJob() {
+      assertRejectedWith("kotlinJob", untracked(LOCK_PREFIX, "kotlinJob", Job.class));
+      assertRejectedWith(
+          "semaphoreKotlinJob", untracked(SEMAPHORE_PREFIX, "semaphoreKotlinJob", Job.class));
+      assertRejectedWith("asyncKotlinJob", asyncOnly(LOCK_PREFIX, "asyncKotlinJob", Job.class));
+    }
+
+    private static final String BASE_PREFIX =
+        "@DistributedLock on " + GenericBase.class.getName() + ".";
+
+    private void assertRejectedOn(Class<?> beanClass, String name, String message) {
+      assertThatThrownBy(() -> factory.create(GenericBase.class.getDeclaredMethod(name), beanClass))
+          .isInstanceOf(LocksmithConfigurationException.class)
+          .hasMessage(message);
+    }
+
+    @Test
+    @DisplayName(
+        "reads the return type as the bean class binds it, as Spring MVC does, and rejects what it"
+            + " is bound to")
+    void rejectsTypesTheBeanClassBinds() {
+      assertRejectedOn(
+          SseBase.class,
+          "entity",
+          runsAfterRelease(BASE_PREFIX, "entity", entityOf(SseEmitter.class.getName())));
+      assertRejectedOn(
+          StreamingBase.class,
+          "entity",
+          runsAfterRelease(BASE_PREFIX, "entity", entityOf(StreamingResponseBody.class.getName())));
+      assertRejectedOn(
+          MonoBase.class,
+          "entity",
+          runsAfterRelease(BASE_PREFIX, "entity", entityOf(generic(Mono.class, STRING))));
+      assertRejectedOn(
+          CallableBase.class,
+          "value",
+          runsAfterRelease(BASE_PREFIX, "value", generic(Callable.class, STRING)));
+      assertRejectedOn(MonoBase.class, "value", reactive(BASE_PREFIX, "value", Mono.class));
+      assertRejectedOn(
+          FutureBase.class, "value", untracked(BASE_PREFIX, "value", CompletableFuture.class));
+      assertRejectedOn(JobBase.class, "value", untracked(BASE_PREFIX, "value", Job.class));
+    }
+
+    @Test
+    @DisplayName(
+        "judges an @Async method by its erased return type, as Spring's @Async does, even when"
+            + " the bean class binds it to a future")
+    void asyncRuleReadsTheErasedType() {
+      // Spring's @Async sees Object here and fails every call.
+      assertRejectedOn(
+          FutureBase.class, "asyncValue", asyncOnly(BASE_PREFIX, "asyncValue", Object.class));
+    }
+
+    @Test
+    @DisplayName(
+        "accepts a type the bean class binds to a plain value, and an unbound one without a bean"
+            + " class")
+    void acceptsTypesBoundToPlainValues() throws NoSuchMethodException {
+      Method entity = GenericBase.class.getDeclaredMethod("entity");
+      Method value = GenericBase.class.getDeclaredMethod("value");
+
+      assertThat(factory.create(entity, StringBase.class).lock()).isNotNull();
+      assertThat(factory.create(value, StringBase.class).lock()).isNotNull();
+      assertThat(factory.create(entity).lock()).isNotNull();
+      assertThat(factory.create(value).lock()).isNotNull();
     }
   }
 }

@@ -15,13 +15,13 @@ import org.jspecify.annotations.NonNull;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -31,13 +31,15 @@ import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Role;
+import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 
 /**
  * Registers Locksmith when a {@link RedissonClient} bean exists and {@code locksmith.enabled} is
  * {@code true} or not set: the operations, the advisor that applies the annotations, the startup
  * validator, and an auto-proxy creator if the context has none. Logs one INFO line with the
- * effective settings.
+ * effective settings. Ordered after the other auto-configurations, so a {@code RedissonClient} bean
+ * that any of them defines is seen, whatever its class is called.
  */
 @AutoConfiguration(
     afterName = {
@@ -45,6 +47,7 @@ import org.springframework.core.env.Environment;
       "org.springframework.boot.micrometer.metrics.autoconfigure"
           + ".CompositeMeterRegistryAutoConfiguration"
     })
+@AutoConfigureOrder(Ordered.LOWEST_PRECEDENCE)
 @ConditionalOnClass(RedissonClient.class)
 @ConditionalOnBean(RedissonClient.class)
 @Conditional(LocksmithEnabledCondition.class)
@@ -157,7 +160,7 @@ public class LocksmithAutoConfiguration implements SmartInitializingSingleton {
       @NonNull ObjectProvider<LockOperations> lockOperations,
       @NonNull ObjectProvider<SemaphoreOperations> semaphoreOperations,
       @NonNull ObjectProvider<MethodSpecFactory> methodSpecFactory,
-      @NonNull BeanFactory beanFactory) {
+      @NonNull ListableBeanFactory beanFactory) {
     return new LocksmithInterceptor(
         lockOperations, semaphoreOperations, methodSpecFactory, beanFactory);
   }

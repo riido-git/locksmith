@@ -9,10 +9,14 @@ import in.riido.locksmith.metrics.LocksmithMetrics.Outcome;
 import in.riido.locksmith.metrics.LocksmithMetrics.Primitive;
 import in.riido.locksmith.support.RedissonFutures;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,9 +46,15 @@ public class LockOperations {
   /** Read and write locks get their own namespace: Redisson stores them in another layout. */
   private static final String READ_WRITE_KEY_NAMESPACE = "rwlock:";
 
+  /** Not thread ids: Redisson can stop renewing a key that one owner releases and retakes. */
+  private static final AtomicLong OWNER_IDS = new AtomicLong();
+
   private final @NonNull RedissonClient redisson;
   private final @NonNull LocksmithProperties properties;
   private final @NonNull LocksmithMetrics metrics;
+
+  /** The handles the current thread acquired that are not closed yet. */
+  private final ThreadLocal<List<LockHandle>> openHandles = ThreadLocal.withInitial(ArrayList::new);
 
   /**
    * Creates the operations.
@@ -163,13 +173,14 @@ public class LockOperations {
      * interrupted before or while waiting, its interrupt flag is kept, the handle is unacquired,
      * and no lock is left behind in Redis. Only an acquire that completed before the interrupt
      * could stop it returns an acquired handle, with the flag set. An interrupt already set when
-     * this is called sends nothing to Redis.
+     * this is called sends nothing to Redis. A wait time that runs out while Redisson is still
+     * subscribing to the lock's channel also gives an unacquired handle, as Redisson's blocking
+     * tryLock returns false then.
      *
-     * <p>The lock is owned by the calling thread, so a nested acquire of the same key on that
-     * thread is reentrant. The handle releases as that owner, so it can be closed on any thread.
-     * Until it is closed, though, the calling thread takes the same key again at once, even for
-     * unrelated work: after handing the handle to another thread, do not acquire that key again on
-     * this one.
+     * <p>Until the handle is closed, a nested acquire of the same key on the calling thread is
+     * reentrant: it is taken again at once, even for unrelated work and also after the handle was
+     * handed to another thread. So after handing the handle over, do not acquire that key again on
+     * this thread until it is closed. The handle can be closed on any thread.
      *
      * @return the handle, acquired or not
      * @throws IllegalStateException if called on a Redisson I/O thread ({@code redisson-netty-*})
@@ -193,10 +204,9 @@ public class LockOperations {
       }
       RLock lock = getLock(fullKey, type);
       long lease = leaseTime == null ? -1 : leaseTime.toMillis();
-      // Redisson owns a lock by the id of the thread that takes it, as its blocking tryLock does.
       // Waiting in RedissonFutures instead of the blocking tryLock makes an interrupt leave nothing
       // behind: the pending attempt is cancelled, and Redisson releases a lock it still wins.
-      long owner = Thread.currentThread().getId();
+      long owner = ownerFor(fullKey);
       boolean acquired;
       try {
         acquired =
@@ -205,16 +215,42 @@ public class LockOperations {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         return notAcquired(fullKey, Outcome.INTERRUPTED, startNanos);
+      } catch (RedisTimeoutException e) {
+        // Redisson's async tryLock fails this way when the wait time runs out while it is still
+        // subscribing to the lock's channel; its blocking tryLock returns false.
+        if (waitTime.toMillis() > 0
+            && String.valueOf(e.getMessage()).startsWith("Unable to acquire subscription lock")) {
+          return notAcquired(fullKey, Outcome.SKIPPED, startNanos);
+        }
+        throw e;
       }
       if (!acquired) {
         return notAcquired(fullKey, Outcome.SKIPPED, startNanos);
       }
       long acquiredAtNanos = System.nanoTime();
       Duration waited = Duration.ofNanos(acquiredAtNanos - startNanos);
-      return recordAcquired(
-          new LockHandle(
-              redisson, lock, owner, fullKey, leaseTime, acquiredAtNanos, waited, metrics),
-          waited);
+      LockHandle handle =
+          recordAcquired(
+              new LockHandle(
+                  redisson, lock, owner, fullKey, leaseTime, acquiredAtNanos, waited, metrics),
+              waited);
+      openHandles.get().add(handle);
+      return handle;
+    }
+
+    /**
+     * Returns the owner of an open handle this thread acquired on the key, so a nested acquire is
+     * reentrant, or else a new owner.
+     */
+    private long ownerFor(@NonNull String fullKey) {
+      List<LockHandle> handles = openHandles.get();
+      handles.removeIf(LockHandle::closed);
+      for (LockHandle handle : handles) {
+        if (handle.key().equals(fullKey)) {
+          return handle.ownerId();
+        }
+      }
+      return OWNER_IDS.incrementAndGet();
     }
 
     private @NonNull LockHandle recordAcquired(

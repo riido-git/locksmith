@@ -6,7 +6,7 @@
 
     <groupId>in.riido</groupId>
     <artifactId>locksmith-spring-boot-starter</artifactId>
-    <version>4.0.0</version>
+    <version>4.0.1</version>
     <packaging>jar</packaging>
 
     <name>Locksmith Spring Boot Starter</name>
@@ -154,6 +154,13 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-webmvc</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- The servlet API, so tests can build Spring MVC's real functional responses -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
             <scope>test</scope>
         </dependency>
 

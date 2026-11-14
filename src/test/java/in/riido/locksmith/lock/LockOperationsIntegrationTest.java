@@ -777,4 +777,64 @@ class LockOperationsIntegrationTest {
           .until(() -> !locks2.isLocked(key, LockType.REENTRANT));
     }
   }
+
+  @Nested
+  @DisplayName("owner")
+  class Owner {
+
+    @Test
+    @DisplayName(
+        "a nested acquire of the key on one thread reuses the outer owner and is acquired; once"
+            + " both are closed the key is gone")
+    void nestedAcquireReenters() {
+      try (LockHandle outer = locks1.key(key).acquire()) {
+        assertThat(outer.acquired()).isTrue();
+        try (LockHandle nested = locks1.key(key).acquire()) {
+          assertThat(nested.acquired()).isTrue();
+          assertThat(nested.ownerId()).isEqualTo(outer.ownerId());
+        }
+        assertThat(locks2.isLocked(key, LockType.REENTRANT)).as("held after nested close").isTrue();
+      }
+      assertThat(client2.getKeys().countExists("locksmith:lock:" + key)).isZero();
+    }
+
+    @Test
+    @DisplayName(
+        "while a handle handed to another thread is open, a nested acquire on the acquiring thread"
+            + " is still reentrant")
+    void handedOverHandleStillReentrant() throws Exception {
+      LockHandle outer = locks1.key(key).acquire();
+      assertThat(outer.acquired()).isTrue();
+      CountDownLatch release = new CountDownLatch(1);
+      Future<?> closer =
+          executor.submit(
+              () -> {
+                release.await();
+                outer.close();
+                return null;
+              });
+
+      try (LockHandle nested = locks1.key(key).acquire()) {
+        assertThat(nested.acquired()).isTrue();
+        assertThat(nested.ownerId()).isEqualTo(outer.ownerId());
+      }
+      assertThat(locks2.isLocked(key, LockType.REENTRANT)).as("held after nested close").isTrue();
+
+      release.countDown();
+      closer.get(5, SECONDS);
+      assertThat(client2.getKeys().countExists("locksmith:lock:" + key)).isZero();
+    }
+
+    @Test
+    @DisplayName("a READ inside a WRITE of one key on one thread re-enters")
+    void readInsideWrite() {
+      try (LockHandle writer = locks1.key(key).type(LockType.WRITE).acquire();
+          LockHandle reader = locks1.key(key).type(LockType.READ).acquire()) {
+        assertThat(writer.acquired()).isTrue();
+        assertThat(reader.acquired()).isTrue();
+        assertThat(reader.ownerId()).isEqualTo(writer.ownerId());
+      }
+      assertThat(client2.getKeys().countExists("locksmith:rwlock:" + key)).isZero();
+    }
+  }
 }

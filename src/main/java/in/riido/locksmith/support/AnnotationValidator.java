@@ -6,15 +6,20 @@ import in.riido.locksmith.LockType;
 import in.riido.locksmith.LocksmithConfigurationException;
 import in.riido.locksmith.aop.MethodSpec;
 import in.riido.locksmith.aop.MethodSpecFactory;
+import in.riido.locksmith.lock.LockFailureHandler;
+import in.riido.locksmith.semaphore.SemaphoreFailureHandler;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.PriorityOrdered;
@@ -24,8 +29,14 @@ import org.springframework.util.ReflectionUtils;
 /**
  * Checks the Locksmith annotations of every bean at startup, so a misconfiguration fails the
  * context refresh instead of the first call. The specs it builds only serve the check; the
- * interceptor builds its own on a method's first call. It never calls {@code getBean} on the
- * handler types it checks, so it triggers no early instantiation.
+ * interceptor builds its own on a method's first call.
+ *
+ * <p>The failure handler of each annotation is counted once every singleton is created, when the
+ * class of a handler declared by its interface, such as {@code @Bean LockFailureHandler audit()},
+ * is known; for a bean created after that, at once. It calls {@code getBean} only on a handler
+ * whose type is a JDK proxy class, to read the class behind it; such a handler is already created,
+ * except a lazy {@code ProxyFactoryBean} with explicit interfaces, which reports that type before
+ * it is created.
  *
  * <p>It is {@link PriorityOrdered}, so it runs before every {@link Ordered} post-processor,
  * including the auto-proxy creator. It therefore sees the raw bean: {@code
@@ -34,10 +45,16 @@ import org.springframework.util.ReflectionUtils;
  * that is itself a JDK dynamic proxy, such as a Feign client, is checked through the annotated
  * methods of its interfaces.
  */
-public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
+public class AnnotationValidator
+    implements BeanPostProcessor, PriorityOrdered, SmartInitializingSingleton {
 
   private final @NonNull ObjectProvider<MethodSpecFactory> factory;
   private final @NonNull ListableBeanFactory beanFactory;
+
+  /** Handler counts waiting for every singleton to be created; guards the flag below too. */
+  private final List<Runnable> handlerChecks = new ArrayList<>();
+
+  private boolean singletonsInstantiated;
 
   /** The first method seen with each {@code @DistributedLock} key text, and its lock type. */
   private final Map<String, KeyUse> lockKeys = new ConcurrentHashMap<>();
@@ -59,11 +76,11 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
   }
 
   /**
-   * Builds the spec of every annotated method of the bean's class, checks that Spring's proxy of
-   * the bean can intercept each, that each failure handler type has exactly one bean, that no
-   * {@code @DistributedLock} key text is used both with {@code REENTRANT} and with {@code READ} or
-   * {@code WRITE}, and that no {@code @DistributedSemaphore} key text is used with two permit
-   * counts.
+   * Builds the spec of every annotated method of the bean's class, reading return types as that
+   * class binds their type variables, checks that Spring's proxy of the bean can intercept each,
+   * that no {@code @DistributedLock} key text is used both with {@code REENTRANT} and with {@code
+   * READ} or {@code WRITE}, and that no {@code @DistributedSemaphore} key text is used with two
+   * permit counts, and has each failure handler type counted, which must have exactly one bean.
    *
    * @param bean the initialized bean
    * @param beanName the bean name
@@ -78,21 +95,59 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
     for (Method declared :
         ReflectionUtils.getUniqueDeclaredMethods(target, MethodSpecFactory::isAnnotated)) {
       Method method = MethodSpecFactory.interfaceMethodOfJdkProxy(declared);
-      MethodSpec spec = factory.getObject().create(method);
+      MethodSpec spec = factory.getObject().create(method, target);
       if (spec.lock() != null) {
         requireInterceptable(DistributedLock.class, method, target);
-        requireSingleHandlerBean(DistributedLock.class, spec.lock().handlerType(), method);
+        Class<?> handlerType = spec.lock().handlerType();
+        checkHandler(
+            () ->
+                requireSingleHandlerBean(
+                    DistributedLock.class, handlerType, LockFailureHandler.class, method));
         requireOneLockKind(KeyTemplate.describe(spec.lock().key()), spec.lock().type(), method);
       }
       if (spec.semaphore() != null) {
         requireInterceptable(DistributedSemaphore.class, method, target);
-        requireSingleHandlerBean(
-            DistributedSemaphore.class, spec.semaphore().handlerType(), method);
+        Class<?> handlerType = spec.semaphore().handlerType();
+        checkHandler(
+            () ->
+                requireSingleHandlerBean(
+                    DistributedSemaphore.class,
+                    handlerType,
+                    SemaphoreFailureHandler.class,
+                    method));
         requireOneCount(
             KeyTemplate.describe(spec.semaphore().key()), spec.semaphore().permits(), method);
       }
     }
     return bean;
+  }
+
+  /**
+   * Counts the failure handlers of the beans checked so far, now that every singleton is created.
+   *
+   * @throws LocksmithConfigurationException if a handler type does not have exactly one bean, which
+   *     aborts the context refresh
+   */
+  @Override
+  public void afterSingletonsInstantiated() {
+    List<Runnable> checks;
+    synchronized (handlerChecks) {
+      singletonsInstantiated = true;
+      checks = List.copyOf(handlerChecks);
+      handlerChecks.clear();
+    }
+    checks.forEach(Runnable::run);
+  }
+
+  /** Runs a handler count once every singleton is created, or now if they already are. */
+  private void checkHandler(@NonNull Runnable check) {
+    synchronized (handlerChecks) {
+      if (!singletonsInstantiated) {
+        handlerChecks.add(check);
+        return;
+      }
+    }
+    check.run();
   }
 
   /**
@@ -195,14 +250,20 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
   /** A method that uses a semaphore key text, and the permit count it uses it with. */
   private record PermitsUse(@NonNull Method method, int permits) {}
 
+  /**
+   * Fails unless exactly one bean is of the handler type, by the rule the interceptor finds it
+   * with: {@link MethodSpecFactory#failureHandlerNames}.
+   */
   private void requireSingleHandlerBean(
       @NonNull Class<? extends Annotation> annotation,
       @Nullable Class<?> handlerType,
+      @NonNull Class<?> handlerInterface,
       @NonNull Method method) {
     if (handlerType == null) {
       return;
     }
-    int found = beanFactory.getBeanNamesForType(handlerType).length;
+    int found =
+        MethodSpecFactory.failureHandlerNames(beanFactory, handlerType, handlerInterface).size();
     if (found != 1) {
       throw new LocksmithConfigurationException(
           "@"
@@ -214,7 +275,11 @@ public class AnnotationValidator implements BeanPostProcessor, PriorityOrdered {
               + ": onFailure HANDLER requires exactly one bean of handler type ["
               + handlerType.getName()
               + "], found "
-              + found);
+              + found
+              + (found == 0
+                  ? "; for a lazy or prototype @Bean, declare the concrete handler type as its"
+                      + " return type so startup can identify it without creating it"
+                  : ""));
     }
   }
 }

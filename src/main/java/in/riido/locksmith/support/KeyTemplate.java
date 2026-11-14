@@ -17,6 +17,8 @@ import org.springframework.expression.common.CompositeStringExpression;
 import org.springframework.expression.common.LiteralExpression;
 import org.springframework.expression.spel.SpelNode;
 import org.springframework.expression.spel.ast.BeanReference;
+import org.springframework.expression.spel.ast.Projection;
+import org.springframework.expression.spel.ast.Selection;
 import org.springframework.expression.spel.ast.VariableReference;
 import org.springframework.expression.spel.standard.SpelExpression;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
@@ -38,6 +40,9 @@ public final class KeyTemplate {
 
   /** {@code #this}, the current element inside a selection or projection. */
   private static final String THIS_VARIABLE = "this";
+
+  /** {@code #root}, SpEL's root object, which key templates do not have. */
+  private static final String ROOT_VARIABLE = "root";
 
   private KeyTemplate() {}
 
@@ -114,10 +119,10 @@ public final class KeyTemplate {
 
   /**
    * Checks that every variable in a parsed template is a parameter name of the method, {@code #pN}
-   * / {@code #aN} with {@code N} below the parameter count, or {@code #this}, which is allowed
-   * inside filters and projections, and that the template references no bean. {@code #root} and
-   * bean references such as {@code @myBean} are rejected: there is no root object and no bean
-   * resolver, so either would fail every call.
+   * / {@code #aN} with {@code N} below the parameter count, or {@code #this} inside a selection or
+   * projection, and that the template references no bean. {@code #root}, also when a parameter is
+   * named {@code root}, {@code #this} anywhere else, and bean references such as {@code @myBean}
+   * are rejected: there is no root object and no bean resolver, so each would fail every call.
    *
    * @param expression the parsed template
    * @param method the annotated method
@@ -127,7 +132,14 @@ public final class KeyTemplate {
   public static void validateVariables(@NonNull Expression expression, @NonNull Method method) {
     String[] names = DefaultParameterNameDiscoverer.getSharedInstance().getParameterNames(method);
     List<String> parameterNames = names == null ? List.of() : Arrays.asList(names);
-    for (SpelNode node : nodes(expression)) {
+    List<SpelNode> nodes = nodes(expression);
+    List<SpelNode> inSelectionOrProjection = new ArrayList<>();
+    for (SpelNode node : nodes) {
+      if (node instanceof Selection || node instanceof Projection) {
+        collect(node, inSelectionOrProjection);
+      }
+    }
+    for (SpelNode node : nodes) {
       if (node instanceof BeanReference) {
         throw new LocksmithConfigurationException(
             "Key template ["
@@ -142,9 +154,28 @@ public final class KeyTemplate {
         continue;
       }
       String variable = node.toStringAST().substring(1);
-      if (!variable.equals(THIS_VARIABLE)
-          && !parameterNames.contains(variable)
-          && !isIndexInRange(variable, method)) {
+      if (variable.equals(ROOT_VARIABLE)) {
+        throw new LocksmithConfigurationException(
+            "Key template ["
+                + describe(expression)
+                + "] on "
+                + describe(method)
+                + " uses #root, which is SpEL's root object and not a parameter; key templates have"
+                + " no root object. Refer to a parameter named root by its position, such as #p0");
+      }
+      if (variable.equals(THIS_VARIABLE)) {
+        if (!inSelectionOrProjection.contains(node)) {
+          throw new LocksmithConfigurationException(
+              "Key template ["
+                  + describe(expression)
+                  + "] on "
+                  + describe(method)
+                  + " uses #this outside a selection or projection, where it has no value; use a"
+                  + " parameter name, #p0 or #a0");
+        }
+        continue;
+      }
+      if (!parameterNames.contains(variable) && !isIndexInRange(variable, method)) {
         throw new LocksmithConfigurationException(
             "Key template ["
                 + describe(expression)

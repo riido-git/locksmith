@@ -1,6 +1,7 @@
 package in.riido.locksmith.support;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import in.riido.locksmith.LocksmithConfigurationException;
 import java.util.concurrent.CompletableFuture;
@@ -35,9 +36,12 @@ public final class RedissonFutures {
 
   /**
    * Any Redisson thread, including the executor threads that run listeners and executor service
-   * tasks and deliver pub/sub messages, such as the one that wakes a waiting acquire.
+   * tasks and deliver pub/sub messages, such as the one that wakes a waiting acquire. Redisson
+   * names its threads {@code redisson-netty-*}, {@code redisson-timer-*} and {@code
+   * redisson-<pool>-<n>}, so an application thread such as {@code redissonTaskExecutor-1} is not
+   * one of them.
    */
-  private static final String REDISSON_THREAD = "redisson";
+  private static final String REDISSON_THREAD = "redisson-";
 
   private RedissonFutures() {}
 
@@ -162,6 +166,55 @@ public final class RedissonFutures {
         Thread.currentThread().interrupt();
       } catch (ExecutionException e) {
         // The same conversion as Redisson's blocking methods, so both paths throw alike.
+        throw e.getCause() instanceof RedisException redis
+            ? redis
+            : new RedisException("Unexpected exception while processing command", e.getCause());
+      }
+    }
+  }
+
+  /**
+   * Waits for a Redisson async call as {@link #await(RedissonClient, RFuture)} does, but for at
+   * most {@code timeoutMillis}. Once that time has passed, the call is cancelled as on an interrupt
+   * and the wait fails with a {@link TimeoutException}. If the call completed before the cancel
+   * could reach it, its outcome is returned instead.
+   *
+   * @param redisson the client the call was made on
+   * @param future the pending call
+   * @param timeoutMillis how long to wait, in milliseconds
+   * @param <T> the result type
+   * @return the result
+   * @throws InterruptedException if the thread is interrupted, including before the call, and the
+   *     call was cancelled
+   * @throws TimeoutException if the time passed and the call was cancelled
+   * @throws RedissonShutdownException if the client shuts down while the call is pending
+   * @throws RedisException what the call failed with, converted as Redisson's blocking methods do
+   */
+  public static <T> T await(
+      @NonNull RedissonClient redisson, @NonNull RFuture<T> future, long timeoutMillis)
+      throws InterruptedException, TimeoutException {
+    CompletableFuture<T> pending = future.toCompletableFuture();
+    long deadlineNanos = System.nanoTime() + MILLISECONDS.toNanos(timeoutMillis);
+    while (true) {
+      long leftNanos = deadlineNanos - System.nanoTime();
+      try {
+        return pending.get(
+            Math.min(MILLISECONDS.toNanos(SHUTDOWN_CHECK_MILLIS), leftNanos), NANOSECONDS);
+      } catch (TimeoutException e) {
+        if (redisson.isShuttingDown() && future.cancel(false)) {
+          throw new RedissonShutdownException("Redisson is shutdown");
+        }
+        if (deadlineNanos - System.nanoTime() <= 0 && future.cancel(false)) {
+          throw e;
+        }
+        // Still waiting, or a cancel lost to the completion and the next get returns at once.
+      } catch (InterruptedException e) {
+        if (future.cancel(false)) {
+          throw e;
+        }
+        // The cancel lost to the completion, so the future is done: the next get returns at once.
+        Thread.currentThread().interrupt();
+      } catch (ExecutionException e) {
         throw e.getCause() instanceof RedisException redis
             ? redis
             : new RedisException("Unexpected exception while processing command", e.getCause());

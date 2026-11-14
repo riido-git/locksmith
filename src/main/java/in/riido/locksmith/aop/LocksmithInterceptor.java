@@ -3,17 +3,20 @@ package in.riido.locksmith.aop;
 import in.riido.locksmith.aop.MethodSpec.LockSpec;
 import in.riido.locksmith.aop.MethodSpec.SemaphoreSpec;
 import in.riido.locksmith.lock.LockFailureContext;
+import in.riido.locksmith.lock.LockFailureHandler;
 import in.riido.locksmith.lock.LockHandle;
 import in.riido.locksmith.lock.LockNotAcquiredException;
 import in.riido.locksmith.lock.LockOperations;
 import in.riido.locksmith.semaphore.PermitHandle;
 import in.riido.locksmith.semaphore.SemaphoreFailureContext;
+import in.riido.locksmith.semaphore.SemaphoreFailureHandler;
 import in.riido.locksmith.semaphore.SemaphoreNotAcquiredException;
 import in.riido.locksmith.semaphore.SemaphoreOperations;
 import in.riido.locksmith.support.KeyTemplate;
 import in.riido.locksmith.support.ReturnDefaults;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -23,8 +26,10 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aop.support.AopUtils;
-import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.MethodClassKey;
 import org.springframework.util.function.SingletonSupplier;
 
 /**
@@ -49,8 +54,8 @@ public class LocksmithInterceptor implements MethodInterceptor {
   private final @NonNull SingletonSupplier<LockOperations> lockOperations;
   private final @NonNull SingletonSupplier<SemaphoreOperations> semaphoreOperations;
   private final @NonNull SingletonSupplier<MethodSpecFactory> factory;
-  private final @NonNull BeanFactory beanFactory;
-  private final Map<Method, MethodSpec> specs = new ConcurrentHashMap<>();
+  private final @NonNull ListableBeanFactory beanFactory;
+  private final Map<MethodClassKey, MethodSpec> specs = new ConcurrentHashMap<>();
 
   /**
    * Creates the interceptor.
@@ -58,13 +63,13 @@ public class LocksmithInterceptor implements MethodInterceptor {
    * @param lockOperations takes and releases the locks; resolved on first use
    * @param semaphoreOperations takes and releases the semaphore permits; resolved on first use
    * @param factory builds the spec of a method on its first call; resolved on first use
-   * @param beanFactory resolves failure handler beans on first use
+   * @param beanFactory finds the failure handler bean on each failure
    */
   public LocksmithInterceptor(
       @NonNull ObjectProvider<LockOperations> lockOperations,
       @NonNull ObjectProvider<SemaphoreOperations> semaphoreOperations,
       @NonNull ObjectProvider<MethodSpecFactory> factory,
-      @NonNull BeanFactory beanFactory) {
+      @NonNull ListableBeanFactory beanFactory) {
     this.lockOperations = SingletonSupplier.of(lockOperations::getObject);
     this.semaphoreOperations = SingletonSupplier.of(semaphoreOperations::getObject);
     this.factory = SingletonSupplier.of(factory::getObject);
@@ -75,8 +80,8 @@ public class LocksmithInterceptor implements MethodInterceptor {
    * Acquires the permit, then the lock, of the invoked method, proceeds, and releases the lock and
    * then the permit whether the method returns or throws. When either is not acquired, the method
    * does not run, a permit already held is released, and the failure policy of the annotation that
-   * failed decides the result. When the method returns work that is still pending, such as a {@code
-   * Callable} declared as {@code Object}, it logs an ERROR on each call and returns the value.
+   * failed decides the result. When the method returns deferred work that is still pending, or
+   * whose completion cannot be checked, it logs an ERROR on each call and returns the value.
    *
    * @param invocation the intercepted call
    * @return the method result, or the failure policy result
@@ -95,17 +100,24 @@ public class LocksmithInterceptor implements MethodInterceptor {
     // the class of the object behind it.
     Class<?> targetClass =
         target == null
-            ? null
+            ? invocation.getMethod().getDeclaringClass()
             : Proxy.isProxyClass(target.getClass())
                 ? target.getClass()
                 : AopUtils.getTargetClass(target);
     Method method =
         MethodSpecFactory.interfaceMethodOfJdkProxy(
             AopUtils.getMostSpecificMethod(invocation.getMethod(), targetClass));
-    MethodSpec spec = specs.computeIfAbsent(method, m -> factory.obtain().create(m));
+    MethodSpec spec =
+        specs.computeIfAbsent(
+            new MethodClassKey(method, targetClass),
+            key -> factory.obtain().create(method, targetClass));
     Object[] args = invocation.getArguments();
     SemaphoreSpec semaphore = spec.semaphore();
     LockSpec lock = spec.lock();
+    if (semaphore == null && lock == null) {
+      // Neither annotation, which only an interceptor applied by hand meets: run the method as is.
+      return invocation.proceed();
+    }
     try (PermitHandle permit = semaphore == null ? null : acquire(semaphore, method, args)) {
       if (permit != null && !permit.acquired()) {
         return semaphoreFailure(semaphore, permit.key(), method, args);
@@ -128,8 +140,8 @@ public class LocksmithInterceptor implements MethodInterceptor {
   }
 
   /**
-   * Logs a call that returned work still pending, which runs after the lock and permit are
-   * released: startup refuses such a declared return type, but not one as wide as {@code Object}.
+   * Logs a call that returned deferred work, either still pending or whose completion cannot be
+   * checked: startup refuses such a declared return type, but not one as wide as {@code Object}.
    */
   private static void logPendingWork(
       @NonNull Method method,
@@ -147,8 +159,8 @@ public class LocksmithInterceptor implements MethodInterceptor {
                 ? "lock [" + held.key() + "]"
                 : "lock [" + held.key() + "] and permit [" + permit.key() + "]";
     LOG.error(
-        "{} on {}.{} returned {}, whose work runs after Locksmith releases {}, so that work runs"
-            + " without coordination; put the annotation on the method that does the work. See {}",
+        "{} on {}.{} returned {}, whose work may run after Locksmith releases {}, without"
+            + " coordination; put the annotation on the method that does the work. See {}",
         annotations,
         method.getDeclaringClass().getName(),
         method.getName(),
@@ -192,7 +204,7 @@ public class LocksmithInterceptor implements MethodInterceptor {
           throw new SemaphoreNotAcquiredException(fullKey, spec.permits(), spec.waitTime());
       case SKIP -> ReturnDefaults.forType(method.getReturnType());
       case HANDLER ->
-          handler(spec.handlerType())
+          handler(spec.handlerType(), SemaphoreFailureHandler.class)
               .onFailure(
                   new SemaphoreFailureContext(
                       fullKey, spec.permits(), method, args, spec.waitTime()));
@@ -208,13 +220,20 @@ public class LocksmithInterceptor implements MethodInterceptor {
       case THROW -> throw new LockNotAcquiredException(fullKey, spec.waitTime());
       case SKIP -> ReturnDefaults.forType(method.getReturnType());
       case HANDLER ->
-          handler(spec.handlerType())
+          handler(spec.handlerType(), LockFailureHandler.class)
               .onFailure(new LockFailureContext(fullKey, method, args, spec.waitTime()));
     };
   }
 
-  private <T> @NonNull T handler(@Nullable Class<? extends T> handlerType) {
-    // MethodSpecFactory guarantees a handler type whenever onFailure is HANDLER.
-    return beanFactory.getBean(handlerType);
+  private <T> @NonNull T handler(
+      @Nullable Class<? extends T> handlerType, @NonNull Class<T> handlerInterface) {
+    // MethodSpecFactory guarantees a handler type whenever onFailure is HANDLER, and the startup
+    // check one bean of it, counted by the same rule.
+    List<String> names =
+        MethodSpecFactory.failureHandlerNames(beanFactory, handlerType, handlerInterface);
+    if (names.isEmpty()) {
+      throw new NoSuchBeanDefinitionException(handlerType);
+    }
+    return beanFactory.getBean(names.get(0), handlerInterface);
   }
 }

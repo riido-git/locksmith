@@ -24,6 +24,7 @@ import in.riido.locksmith.metrics.LocksmithMetrics;
 import in.riido.locksmith.metrics.LocksmithMetrics.Outcome;
 import in.riido.locksmith.metrics.LocksmithMetrics.Primitive;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.redisson.RedissonShutdownException;
 import org.redisson.api.RFuture;
@@ -39,6 +41,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RReadWriteLock;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisConnectionException;
+import org.redisson.client.RedisTimeoutException;
 import org.redisson.config.Config;
 import org.redisson.misc.CompletableFutureWrapper;
 
@@ -85,6 +88,13 @@ class LockOperationsTest {
         return super.cancel(mayInterruptIfRunning);
       }
     };
+  }
+
+  /** What Redisson's async tryLock fails with when the wait time runs out while it subscribes. */
+  private static RedisTimeoutException subscriptionLockTimeout() {
+    return new RedisTimeoutException(
+        "Unable to acquire subscription lock after 5ms. Try to increase 'subscriptionTimeout',"
+            + " 'subscriptionsPerConnection', 'subscriptionConnectionPoolSize' parameters. ");
   }
 
   @AfterEach
@@ -150,13 +160,13 @@ class LockOperationsTest {
   class Type {
 
     @Test
-    @DisplayName("REENTRANT is the default, uses getLock, and is owned by the calling thread")
+    @DisplayName("REENTRANT is the default and uses getLock")
     void reentrantByDefault() {
       when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong())).thenReturn(done(true));
 
       assertThat(operations.key("k").acquire().acquired()).isTrue();
 
-      verify(reentrant).tryLockAsync(0L, -1L, MILLISECONDS, Thread.currentThread().getId());
+      verify(reentrant).tryLockAsync(eq(0L), eq(-1L), eq(MILLISECONDS), anyLong());
       verify(redisson, never()).getReadWriteLock(any(String.class));
     }
 
@@ -410,6 +420,42 @@ class LockOperationsTest {
     }
 
     @Test
+    @DisplayName(
+        "a wait time that runs out while Redisson is still subscribing: records SKIPPED,"
+            + " unacquired")
+    void waitEndsWhileSubscribing() {
+      when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong()))
+          .thenReturn(new CompletableFutureWrapper<>(subscriptionLockTimeout()));
+
+      LockHandle handle = operations.key("k").waitTime(Duration.ofMillis(5)).acquire();
+
+      assertThat(handle.acquired()).isFalse();
+      verify(metrics).recordAcquire(eq(Primitive.LOCK), eq(Outcome.SKIPPED), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("the subscription lock timeout of a try-once acquire propagates unchanged")
+    void subscriptionLockTimeoutWithoutWaitPropagates() {
+      RedisTimeoutException failure = subscriptionLockTimeout();
+      when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong()))
+          .thenReturn(new CompletableFutureWrapper<>(failure));
+
+      assertThatThrownBy(() -> operations.key("k").acquire()).isSameAs(failure);
+    }
+
+    @Test
+    @DisplayName("another Redisson timeout of a waiting acquire propagates unchanged")
+    void otherTimeoutPropagates() {
+      RedisTimeoutException failure =
+          new RedisTimeoutException("Subscription response timeout after 3000ms. ...");
+      when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong()))
+          .thenReturn(new CompletableFutureWrapper<>(failure));
+
+      assertThatThrownBy(() -> operations.key("k").waitTime(Duration.ofMillis(5)).acquire())
+          .isSameAs(failure);
+    }
+
+    @Test
     @DisplayName("a metrics failure after the lock was taken propagates and unlocks once")
     void metricsFailureReleasesLock() {
       when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong())).thenReturn(done(true));
@@ -422,7 +468,56 @@ class LockOperationsTest {
 
       assertThatThrownBy(() -> operations.key("k").acquire()).isSameAs(failure);
 
-      verify(reentrant, times(1)).unlockAsync(Thread.currentThread().getId());
+      verify(reentrant, times(1)).unlockAsync(anyLong());
+    }
+  }
+
+  @Nested
+  @DisplayName("owner")
+  class Owner {
+
+    @BeforeEach
+    void lockAndRelease() {
+      when(reentrant.tryLockAsync(anyLong(), anyLong(), any(), anyLong())).thenReturn(done(true));
+      when(reentrant.unlockAsync(anyLong()))
+          .thenReturn(new CompletableFutureWrapper<>((Void) null));
+    }
+
+    /** The owners the given number of acquires passed to Redisson, in order. */
+    private List<Long> owners(int acquires) {
+      ArgumentCaptor<Long> owner = ArgumentCaptor.forClass(Long.class);
+      verify(reentrant, times(acquires)).tryLockAsync(anyLong(), anyLong(), any(), owner.capture());
+      return owner.getAllValues();
+    }
+
+    @Test
+    @DisplayName("two acquires of one key on one thread, one after the other, use two owners")
+    void sequentialAcquiresUseNewOwners() {
+      operations.key("k").acquire().close();
+      operations.key("k").acquire().close();
+
+      List<Long> owners = owners(2);
+      assertThat(owners).doesNotHaveDuplicates();
+      verify(reentrant).unlockAsync(owners.get(0));
+      verify(reentrant).unlockAsync(owners.get(1));
+    }
+
+    @Test
+    @DisplayName(
+        "after a handle is closed on another thread, the acquiring thread's next acquire of the"
+            + " key uses a new owner")
+    void closedOnAnotherThreadThenNewOwner() throws InterruptedException {
+      LockHandle first = operations.key("k").acquire();
+      onThread(
+          "closer",
+          () -> {
+            first.close();
+            return null;
+          });
+
+      operations.key("k").acquire().close();
+
+      assertThat(owners(2)).doesNotHaveDuplicates();
     }
   }
 

@@ -34,6 +34,8 @@ class KeyTemplateTest {
     void place(String userId, Order order) {}
 
     void tag(List<String> tags) {}
+
+    void tree(Order root) {}
   }
 
   private static final Method PLACE = method();
@@ -250,11 +252,53 @@ class KeyTemplateTest {
     }
 
     @Test
-    @DisplayName("#root fails as an unknown variable")
+    @DisplayName("#root fails, as key templates have no root object")
     void rootFails() {
       assertThatThrownBy(() -> validate("#{#root}"))
           .isInstanceOf(LocksmithConfigurationException.class)
           .hasMessageContaining("#root");
+    }
+
+    @Test
+    @DisplayName("#root fails also when a parameter is named root; #p0 reaches that parameter")
+    void rootFailsForParameterNamedRoot() throws NoSuchMethodException {
+      Method tree = Fixture.class.getDeclaredMethod("tree", Order.class);
+
+      assertThatThrownBy(
+              () -> KeyTemplate.validateVariables(KeyTemplate.parse("tree:#{#root.id}"), tree))
+          .isExactlyInstanceOf(LocksmithConfigurationException.class)
+          .hasMessage(
+              "Key template [tree:#{#root.id}] on "
+                  + Fixture.class.getName()
+                  + ".tree uses #root, which is SpEL's root object and not a parameter; key"
+                  + " templates have no root object. Refer to a parameter named root by its"
+                  + " position, such as #p0");
+      assertThatCode(() -> KeyTemplate.validateVariables(KeyTemplate.parse("#{#p0.id}"), tree))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("#this outside a selection or projection fails")
+    void thisOutsideSelectionFails() {
+      assertThatThrownBy(() -> validate("#{#this}"))
+          .isExactlyInstanceOf(LocksmithConfigurationException.class)
+          .hasMessage(
+              "Key template [#{#this}] on "
+                  + PLACE_NAME
+                  + " uses #this outside a selection or projection, where it has no value; use a"
+                  + " parameter name, #p0 or #a0");
+    }
+
+    @Test
+    @DisplayName("#this inside a selection and inside a projection passes")
+    void thisInSelectionAndProjectionPasses() throws NoSuchMethodException {
+      Method tag = Fixture.class.getDeclaredMethod("tag", List.class);
+
+      assertThatCode(
+              () ->
+                  KeyTemplate.validateVariables(
+                      KeyTemplate.parse("#{#p0.?[#this != null]}:#{#p0.![#this.length()]}"), tag))
+          .doesNotThrowAnyException();
     }
   }
 }

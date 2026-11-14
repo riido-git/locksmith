@@ -10,8 +10,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -27,6 +29,7 @@ import in.riido.locksmith.autoconfigure.LocksmithProperties;
 import in.riido.locksmith.metrics.LocksmithMetrics;
 import in.riido.locksmith.metrics.LocksmithMetrics.Outcome;
 import in.riido.locksmith.metrics.LocksmithMetrics.Primitive;
+import in.riido.locksmith.support.RedissonFutures;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -40,8 +43,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import org.mockito.stubbing.Answer;
 import org.redisson.RedissonShutdownException;
 import org.redisson.api.RFuture;
@@ -437,6 +443,54 @@ class SemaphoreOperationsTest {
           .hasCauseInstanceOf(RedissonShutdownException.class);
       // Cancelling is what makes Redisson release a permit the attempt still wins.
       assertThat(pending).isCancelled();
+    }
+
+    @Test
+    @Tag("slow")
+    @Timeout(60)
+    @DisplayName(
+        "a waiting attempt Redisson never answers is cancelled 30s after its wait time: WARN,"
+            + " SKIPPED, unacquired (slow)")
+    void waitNeverAnswered() {
+      CompletableFuture<List<String>> pending = new CompletableFuture<>();
+      when(semaphore.tryAcquireAsync(anyInt(), anyLong(), anyLong(), any()))
+          .thenReturn(new CompletableFutureWrapper<>(pending));
+      long startNanos = System.nanoTime();
+
+      PermitHandle handle = operations.key("k").permits(5).waitTime(Duration.ofMillis(1)).acquire();
+
+      assertThat(Duration.ofNanos(System.nanoTime() - startNanos))
+          .isBetween(Duration.ofSeconds(30), Duration.ofSeconds(35));
+      assertThat(handle.acquired()).isFalse();
+      // Cancelling is what makes Redisson release a permit the attempt still wins.
+      assertThat(pending).isCancelled();
+      assertThat(appender.list)
+          .filteredOn(e -> e.getLevel() == Level.WARN)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .containsExactly(
+              "Permit ["
+                  + FULL_KEY
+                  + "] wait did not end within 30000ms after its wait time of 1ms; Locksmith"
+                  + " stopped waiting and treats it as not acquired");
+      verify(metrics)
+          .recordAcquire(eq(Primitive.SEMAPHORE), eq(Outcome.SKIPPED), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName(
+        "a try-once attempt waits for Redisson without a deadline; a waiting one gets its wait"
+            + " time plus 30s")
+    void tryOnceHasNoDeadline() {
+      try (MockedStatic<RedissonFutures> futures =
+          mockStatic(RedissonFutures.class, CALLS_REAL_METHODS)) {
+        assertThat(operations.key("k").permits(5).acquire().acquired()).isTrue();
+
+        futures.verify(() -> RedissonFutures.await(any(), any(), anyLong()), never());
+
+        operations.key("k").permits(5).waitTime(Duration.ofMillis(5)).acquire();
+
+        futures.verify(() -> RedissonFutures.await(any(), any(), eq(30_005L)));
+      }
     }
 
     @Test
